@@ -134,16 +134,17 @@ export default function ClipboardTemplatesPage() {
 
   return (
     <main
-      style={{
-        minHeight: "100vh",
-        padding: "1rem 2rem",
-        width: "100vw",
-        boxSizing: "border-box",
-        fontFamily: "system-ui, sans-serif",
-        display: "flex",
-        flexDirection: "column",
-        gap: "1rem",
-      }}
+  style={{
+    minHeight: "100vh",
+    padding: "1rem 2rem",
+    width: "100vw",
+    boxSizing: "border-box",
+    fontFamily: "system-ui, sans-serif",
+    display: "flex",
+    flexDirection: "column",
+    gap: "1rem",
+    backgroundColor: "#e5e7eb", // 👈 soft gray background
+  }}
     >
       {/* HEADER + TOGGLE */}
       <div

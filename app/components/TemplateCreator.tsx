@@ -6,15 +6,17 @@ export default function TemplateCreator({
   onSubmit,
 }) {
   return (
-    <section
-      style={{
-        width: "100%",
-        padding: "1rem",
-        border: "1px solid #ddd",
-        borderRadius: "8px",
-        backgroundColor: "white",
-      }}
-    >
+  <section
+  style={{
+    width: "100%",
+    padding: "1rem",
+    border: "1px solid #d1d5db",
+    borderRadius: "8px",
+    backgroundColor: "white",
+    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.12)", // 👈 subtle shadow
+  }}
+>
+
       {/* New header inside the card */}
       <h2
         style={{
