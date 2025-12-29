@@ -1,4 +1,26 @@
-import { useState } from "react";
+import React, { useState } from "react";
+
+type Template = {
+  id: string;
+  title: string;
+  body: string;
+};
+
+type TemplatesGridProps = {
+  templates: Template[];
+  onCopy: (body: string) => void;
+  onDelete: (id: string) => void;
+  editingId: string | null;
+  editingTitle: string;
+  editingBody: string;
+  onStartEdit: (template: Template) => void;
+  onChangeEditingTitle: (value: string) => void;
+  onChangeEditingBody: (value: string) => void;
+  onSaveEdit: (id: string) => void;
+  onCancelEdit: () => void;
+  recentlyAddedId?: string | null;
+  darkMode: boolean;
+};
 
 export default function TemplatesGrid({
   templates,
@@ -12,32 +34,38 @@ export default function TemplatesGrid({
   onChangeEditingBody,
   onSaveEdit,
   onCancelEdit,
-}) {
-  // Per-card collapsed state: { [id]: boolean }
-  const [collapsedById, setCollapsedById] = useState({});
-  // Delete confirmation state
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-  const [confirmDeleteTitle, setConfirmDeleteTitle] = useState("");
+  recentlyAddedId,
+  darkMode,
+}: TemplatesGridProps) {
+  const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteTitle, setConfirmDeleteTitle] = useState<string>("");
 
   if (!templates || templates.length === 0) {
-    return <p style={{ color: "#6b7280" }}>No templates saved yet.</p>;
+    return (
+      <p style={{ color: darkMode ? "#9ca3af" : "#6b7280" }}>
+        No templates saved yet.
+      </p>
+    );
   }
 
-  function toggleCollapse(id) {
+  function toggleCollapse(id: string) {
     setCollapsedById((prev) => ({
       ...prev,
       [id]: !prev[id],
     }));
   }
 
-  function setExpanded(id) {
+  function setExpanded(id: string) {
     setCollapsedById((prev) => ({
       ...prev,
       [id]: false,
     }));
   }
 
-  function openDeleteConfirm(id, title) {
+  function openDeleteConfirm(id: string, title: string) {
     setConfirmDeleteId(id);
     setConfirmDeleteTitle(title || "");
   }
@@ -56,13 +84,18 @@ export default function TemplatesGrid({
   }
 
   const numColumns = 4;
-
-  // Split templates into 4 columns: 0,4,8,... | 1,5,9,... etc.
-  const columns = Array.from({ length: numColumns }, () => []);
+  const columns: Template[][] = Array.from({ length: numColumns }, () => []);
   templates.forEach((template, index) => {
     const colIndex = index % numColumns;
     columns[colIndex].push(template);
   });
+
+  const cardBaseBg = darkMode ? "#020617" : "white";
+  const cardBaseBorder = darkMode ? "#1e293b" : "#bfdbfe";
+  const cardAccent = "#3b82f6";
+  const cardTextColor = darkMode ? "#e5e7eb" : "#111827";
+  const bodyTextColor = darkMode ? "#e5e7eb" : "#111827";
+  const bodyBg = darkMode ? "#020617" : "#f9fafb";
 
   return (
     <>
@@ -70,7 +103,7 @@ export default function TemplatesGrid({
         style={{
           display: "flex",
           gap: "1rem",
-          alignItems: "flex-start", // columns don't stretch
+          alignItems: "flex-start",
         }}
       >
         {columns.map((columnTemplates, colIdx) => (
@@ -86,25 +119,58 @@ export default function TemplatesGrid({
             {columnTemplates.map((template) => {
               const collapsed = !!collapsedById[template.id];
               const isEditing = editingId === template.id;
+              const isRecentlyAdded = template.id === recentlyAddedId;
 
-              const cardStyle = {
-  border: "1px solid #d1d5db", // a bit stronger
-  borderRadius: "8px",
-  padding: collapsed ? "0.35rem 0.5rem" : "0.75rem",
-  display: "flex",
-  flexDirection: "column",
-  gap: collapsed ? "0.25rem" : "0.5rem",
-  backgroundColor: "white",
-  boxSizing: "border-box",
-  boxShadow: "0 4px 12px rgba(15, 23, 42, 0.12)", // 👈 main card shadow
-};
+              // base card style – NO border/borderWidth/borderColor shorthands
+              let cardStyle: React.CSSProperties = {
+                borderTopStyle: "solid",
+                borderBottomStyle: "solid",
+                borderLeftStyle: "solid",
+                borderRightStyle: "solid",
 
+                borderTopWidth: "3px",
+                borderBottomWidth: "3px",
+                borderLeftWidth: "1px",
+                borderRightWidth: "1px",
+
+                borderTopColor: cardAccent,
+                borderBottomColor: cardAccent,
+                borderLeftColor: cardBaseBorder,
+                borderRightColor: cardBaseBorder,
+
+                borderRadius: "10px",
+                padding: collapsed ? "0.35rem 0.5rem" : "0.75rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: collapsed ? "0.25rem" : "0.5rem",
+                backgroundColor: cardBaseBg,
+                boxSizing: "border-box",
+                boxShadow: darkMode
+                  ? "0 8px 20px rgba(0, 0, 0, 0.6)"
+                  : "0 6px 16px rgba(15, 23, 42, 0.18)",
+                transition:
+                  "box-shadow 0.25s ease, background-color 0.25s ease, border-color 0.25s ease",
+              };
+
+              // highlight newly added card
+              if (isRecentlyAdded) {
+                cardStyle = {
+                  ...cardStyle,
+                  backgroundColor: darkMode ? "#1f2937" : "#fefce8",
+                  borderTopColor: "#facc15",
+                  borderBottomColor: "#facc15",
+                  borderLeftColor: "#facc15",
+                  borderRightColor: "#facc15",
+                  boxShadow:
+                    "0 0 0 2px #facc15, 0 8px 20px rgba(15, 23, 42, 0.25)",
+                };
+              }
 
               const minimizeLabel = collapsed ? "Expand" : "Minimize";
 
               return (
                 <article key={template.id} style={cardStyle}>
-                  {/* TOP BUTTON ROW: center group + right X */}
+                  {/* TOP BUTTON ROW */}
                   <div
                     style={{
                       display: "flex",
@@ -115,7 +181,7 @@ export default function TemplatesGrid({
                     {/* left spacer */}
                     <div style={{ flex: 1 }} />
 
-                    {/* centered button group */}
+                    {/* center: minimize / copy / edit */}
                     <div
                       style={{
                         display: "flex",
@@ -124,7 +190,6 @@ export default function TemplatesGrid({
                         gap: "0.25rem",
                       }}
                     >
-                      {/* Minimize / expand button (more prominent) */}
                       <button
                         type="button"
                         onClick={() => toggleCollapse(template.id)}
@@ -132,8 +197,11 @@ export default function TemplatesGrid({
                         style={{
                           padding: "0.25rem 0.75rem",
                           borderRadius: "999px",
-                          border: "1px solid #9ca3af",
-                          backgroundColor: "white",
+                          border: `1px solid ${
+                            darkMode ? "#6b7280" : "#9ca3af"
+                          }`,
+                          backgroundColor: darkMode ? "#020617" : "white",
+                          color: cardTextColor,
                           fontSize: "0.75rem",
                           fontWeight: 500,
                           cursor: "pointer",
@@ -142,7 +210,6 @@ export default function TemplatesGrid({
                         {minimizeLabel}
                       </button>
 
-                      {/* Copy + Edit only in non-edit mode */}
                       {!isEditing && (
                         <>
                           <button
@@ -151,8 +218,12 @@ export default function TemplatesGrid({
                             style={{
                               padding: "0.2rem 0.6rem",
                               borderRadius: "999px",
-                              border: "1px solid #d1d5db",
-                              backgroundColor: "white",
+                              border: `1px solid ${
+                                darkMode ? "#4b5563" : "#d1d5db"
+                              }`,
+                              backgroundColor: darkMode
+                                ? "#020617"
+                                : "white",
                               color: "#2563eb",
                               fontSize: "0.75rem",
                               cursor: "pointer",
@@ -172,9 +243,13 @@ export default function TemplatesGrid({
                             style={{
                               padding: "0.2rem 0.6rem",
                               borderRadius: "999px",
-                              border: "1px solid #d97706",
-                              backgroundColor: "white",
-                              color: "#b45309",
+                              border: `1px solid ${
+                                darkMode ? "#9a3412" : "#d97706"
+                              }`,
+                              backgroundColor: darkMode
+                                ? "#020617"
+                                : "white",
+                              color: darkMode ? "#fdba74" : "#b45309",
                               fontSize: "0.75rem",
                               cursor: "pointer",
                             }}
@@ -185,7 +260,7 @@ export default function TemplatesGrid({
                       )}
                     </div>
 
-                    {/* right side: red X */}
+                    {/* right: delete */}
                     <div
                       style={{
                         flex: 1,
@@ -215,17 +290,21 @@ export default function TemplatesGrid({
                     </div>
                   </div>
 
-                  {/* TITLE DIRECTLY UNDER BUTTONS */}
+                  {/* TITLE */}
                   {isEditing ? (
                     <input
                       type="text"
                       value={editingTitle}
-                      onChange={(e) => onChangeEditingTitle(e.target.value)}
+                      onChange={(e) =>
+                        onChangeEditingTitle(e.target.value)
+                      }
                       style={{
                         width: "100%",
                         padding: "0.4rem 0.6rem",
                         borderRadius: "6px",
                         border: "1px solid #ccc",
+                        backgroundColor: darkMode ? "#020617" : "white",
+                        color: cardTextColor,
                         fontWeight: 600,
                         marginTop: "0.15rem",
                       }}
@@ -238,13 +317,14 @@ export default function TemplatesGrid({
                         wordBreak: "break-word",
                         margin: 0,
                         marginTop: "0.15rem",
+                        color: cardTextColor,
                       }}
                     >
                       {template.title}
                     </h2>
                   )}
 
-                  {/* BODY + ACTIONS: completely gone when collapsed */}
+                  {/* BODY / EDIT AREA */}
                   {!collapsed && (
                     <>
                       {isEditing ? (
@@ -258,7 +338,8 @@ export default function TemplatesGrid({
                             style={{
                               whiteSpace: "pre-wrap",
                               wordBreak: "break-word",
-                              backgroundColor: "#f9fafb",
+                              backgroundColor: bodyBg,
+                              color: bodyTextColor,
                               padding: "0.5rem",
                               borderRadius: "6px",
                               border: "1px solid #ccc",
@@ -299,9 +380,13 @@ export default function TemplatesGrid({
                               style={{
                                 padding: "0.4rem 0.75rem",
                                 borderRadius: "6px",
-                                border: "1px solid #9ca3af",
-                                backgroundColor: "white",
-                                color: "#374151",
+                                border: `1px solid ${
+                                  darkMode ? "#6b7280" : "#9ca3af"
+                                }`,
+                                backgroundColor: darkMode
+                                  ? "#020617"
+                                  : "white",
+                                color: darkMode ? "#e5e7eb" : "#374151",
                                 fontSize: "0.9rem",
                                 cursor: "pointer",
                               }}
@@ -315,7 +400,8 @@ export default function TemplatesGrid({
                           style={{
                             whiteSpace: "pre-wrap",
                             wordBreak: "break-word",
-                            backgroundColor: "#f9fafb",
+                            backgroundColor: bodyBg,
+                            color: bodyTextColor,
                             padding: "0.5rem",
                             borderRadius: "6px",
                             flexGrow: 1,
@@ -341,7 +427,7 @@ export default function TemplatesGrid({
           style={{
             position: "fixed",
             inset: 0,
-            backgroundColor: "rgba(0,0,0,0.35)",
+            backgroundColor: "rgba(0,0,0,0.45)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -350,13 +436,14 @@ export default function TemplatesGrid({
         >
           <div
             style={{
-              backgroundColor: "white",
+              backgroundColor: darkMode ? "#020617" : "white",
               padding: "1.25rem 1.5rem",
               borderRadius: "10px",
               minWidth: "280px",
               maxWidth: "90vw",
               boxShadow:
-                "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)",
+                "0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5)",
+              border: darkMode ? "1px solid #4b5563" : "none",
             }}
           >
             <h3
@@ -365,6 +452,7 @@ export default function TemplatesGrid({
                 marginBottom: "0.5rem",
                 fontSize: "1rem",
                 fontWeight: 600,
+                color: darkMode ? "#e5e7eb" : "#111827",
               }}
             >
               Delete template?
@@ -374,11 +462,11 @@ export default function TemplatesGrid({
                 margin: 0,
                 marginBottom: "0.75rem",
                 fontSize: "0.9rem",
-                color: "#4b5563",
+                color: darkMode ? "#9ca3af" : "#4b5563",
               }}
             >
               {confirmDeleteTitle
-                ? `Are you sure you want to delete “${confirmDeleteTitle}”?`
+                ? `Are you sure you want to delete "${confirmDeleteTitle}"?`
                 : "Are you sure you want to delete this template?"}
             </p>
             <div
@@ -395,8 +483,11 @@ export default function TemplatesGrid({
                 style={{
                   padding: "0.35rem 0.8rem",
                   borderRadius: "6px",
-                  border: "1px solid #d1d5db",
-                  backgroundColor: "white",
+                  border: `1px solid ${
+                    darkMode ? "#4b5563" : "#d1d5db"
+                  }`,
+                  backgroundColor: darkMode ? "#020617" : "white",
+                  color: darkMode ? "#e5e7eb" : "#111827",
                   fontSize: "0.85rem",
                   cursor: "pointer",
                 }}

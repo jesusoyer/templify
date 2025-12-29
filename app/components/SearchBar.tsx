@@ -1,16 +1,50 @@
-export default function SearchBar({ search, onSearchChange }) {
-  return (
-   <section
-  style={{
-    width: "100%",
-    padding: "0.75rem 1rem",
-    border: "1px solid #d1d5db",
-    borderRadius: "8px",
-    backgroundColor: "white",
-    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)", // 👈 slightly lighter shadow
-  }}
->
+import React from "react";
 
+type SearchBarProps = {
+  search: string;
+  onSearchChange: (value: string) => void;
+  darkMode: boolean;
+};
+
+export default function SearchBar({
+  search,
+  onSearchChange,
+  darkMode,
+}: SearchBarProps) {
+  const cardBg = darkMode ? "#020617" : "white";
+  const borderBase = darkMode ? "#1d4ed8" : "#bfdbfe";
+  const accent = "#3b82f6";
+  const textColor = darkMode ? "#e5e7eb" : "#111827";
+  const inputBg = darkMode ? "#020617" : "white";
+  const inputBorder = darkMode ? "#475569" : "#ccc";
+
+  return (
+    <section
+      style={{
+        width: "100%",
+        padding: "0.75rem 1rem",
+
+        // ✅ explicit borders per side – NO border/borderWidth/borderColor shorthands
+        borderTopStyle: "solid",
+        borderBottomStyle: "solid",
+        borderLeftStyle: "solid",
+        borderRightStyle: "solid",
+
+        borderTopWidth: "3px",
+        borderBottomWidth: "3px",
+        borderLeftWidth: "1px",
+        borderRightWidth: "1px",
+
+        borderTopColor: accent,
+        borderBottomColor: accent,
+        borderLeftColor: borderBase,
+        borderRightColor: borderBase,
+
+        borderRadius: "10px",
+        backgroundColor: cardBg,
+        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.14)",
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -18,7 +52,10 @@ export default function SearchBar({ search, onSearchChange }) {
           gap: "0.25rem",
         }}
       >
-        <label htmlFor="search" style={{ fontWeight: 500 }}>
+        <label
+          htmlFor="search"
+          style={{ fontWeight: 500, color: textColor }}
+        >
           Search by title
         </label>
         <input
@@ -30,7 +67,10 @@ export default function SearchBar({ search, onSearchChange }) {
           style={{
             padding: "0.5rem 0.75rem",
             borderRadius: "6px",
-            border: "1px solid #ccc",
+            // This is OK: we are NOT using side-specific border props on the input
+            border: `1px solid ${inputBorder}`,
+            backgroundColor: inputBg,
+            color: textColor,
           }}
         />
       </div>

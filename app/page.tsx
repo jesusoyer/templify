@@ -1,23 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import TemplateCreator from "./components/TemplateCreator";
 import SearchBar from "./components/SearchBar";
 import TemplatesGrid from "./components/TemplatesGrid";
+
+type Template = {
+  id: string;
+  title: string;
+  body: string;
+};
 
 export default function ClipboardTemplatesPage() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [search, setSearch] = useState("");
-  const [templates, setTemplates] = useState([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
 
   // Editing state
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [editingBody, setEditingBody] = useState("");
 
-  // NEW: show/hide creator
+  // Show/hide creator
   const [showCreator, setShowCreator] = useState(true);
+
+  // NEW: dark mode
+  const [darkMode, setDarkMode] = useState(false);
+
+  // NEW: track which template was just added
+  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
   // Load from localStorage on first render
   useEffect(() => {
@@ -40,7 +52,16 @@ export default function ClipboardTemplatesPage() {
     }
   }, [templates]);
 
-  function handleAddTemplate(e) {
+  // Clear the highlight after ~1s
+  useEffect(() => {
+    if (!recentlyAddedId) return;
+    const timeout = setTimeout(() => {
+      setRecentlyAddedId(null);
+    }, 1000);
+    return () => clearTimeout(timeout);
+  }, [recentlyAddedId]);
+
+  function handleAddTemplate(e: React.FormEvent) {
     e.preventDefault();
 
     const trimmedTitle = title.trim();
@@ -51,7 +72,7 @@ export default function ClipboardTemplatesPage() {
       return;
     }
 
-    const newTemplate = {
+    const newTemplate: Template = {
       id: Date.now().toString() + Math.random().toString(16),
       title: trimmedTitle,
       body: trimmedBody,
@@ -60,9 +81,10 @@ export default function ClipboardTemplatesPage() {
     setTemplates((prev) => [newTemplate, ...prev]);
     setTitle("");
     setBody("");
+    setRecentlyAddedId(newTemplate.id);
   }
 
-  function handleDeleteTemplate(id) {
+  function handleDeleteTemplate(id: string) {
     setTemplates((prev) => prev.filter((t) => t.id !== id));
 
     if (editingId === id) {
@@ -72,7 +94,7 @@ export default function ClipboardTemplatesPage() {
     }
   }
 
-  async function handleCopy(text) {
+  async function handleCopy(text: string) {
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
@@ -93,14 +115,14 @@ export default function ClipboardTemplatesPage() {
   }
 
   // Start editing a template
-  function handleStartEdit(template) {
+  function handleStartEdit(template: Template) {
     setEditingId(template.id);
     setEditingTitle(template.title);
     setEditingBody(template.body);
   }
 
   // Save edits
-  function handleSaveEdit(id) {
+  function handleSaveEdit(id: string) {
     const trimmedTitle = editingTitle.trim();
     const trimmedBody = editingBody.trim();
 
@@ -132,21 +154,25 @@ export default function ClipboardTemplatesPage() {
     t.title.toLowerCase().includes(normalizedSearch)
   );
 
+  const mainBg = darkMode ? "#020617" : "#e5e7eb";
+  const mainText = darkMode ? "#e5e7eb" : "#111827";
+
   return (
     <main
-  style={{
-    minHeight: "100vh",
-    padding: "1rem 2rem",
-    width: "100vw",
-    boxSizing: "border-box",
-    fontFamily: "system-ui, sans-serif",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1rem",
-    backgroundColor: "#e5e7eb", // 👈 soft gray background
-  }}
+      style={{
+        minHeight: "100vh",
+        padding: "1rem 2rem",
+        width: "100vw",
+        boxSizing: "border-box",
+        fontFamily: "system-ui, sans-serif",
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+        backgroundColor: mainBg,
+        color: mainText,
+      }}
     >
-      {/* HEADER + TOGGLE */}
+      {/* HEADER + TOGGLES */}
       <div
         style={{
           display: "flex",
@@ -159,27 +185,68 @@ export default function ClipboardTemplatesPage() {
           style={{
             fontSize: "2rem",
             fontWeight: "bold",
+            margin: 0,
+            color: mainText,
           }}
         >
           Clipboard Templates
         </h1>
 
-        <button
-          type="button"
-          onClick={() => setShowCreator((prev) => !prev)}
+        <div
           style={{
-            padding: "0.4rem 0.8rem",
-            borderRadius: "999px",
-            border: "1px solid #d1d5db",
-            backgroundColor: showCreator ? "#f9fafb" : "#111827",
-            color: showCreator ? "#111827" : "#f9fafb",
-            fontSize: "0.9rem",
-            cursor: "pointer",
-            fontWeight: 500,
+            display: "flex",
+            gap: "0.5rem",
+            alignItems: "center",
           }}
         >
-          {showCreator ? "Hide Creator" : "Show Creator"}
-        </button>
+          {/* Dark mode toggle */}
+          <button
+            type="button"
+            onClick={() => setDarkMode((prev) => !prev)}
+            style={{
+              padding: "0.4rem 0.8rem",
+              borderRadius: "999px",
+              border: "1px solid #4b5563",
+              backgroundColor: darkMode ? "#111827" : "#f9fafb",
+              color: darkMode ? "#e5e7eb" : "#111827",
+              fontSize: "0.9rem",
+              cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            {darkMode ? "Light mode" : "Dark mode"}
+          </button>
+
+          {/* Creator toggle */}
+          <button
+            type="button"
+            onClick={() => setShowCreator((prev) => !prev)}
+            style={{
+              padding: "0.4rem 0.8rem",
+              borderRadius: "999px",
+              border: "1px solid #d1d5db",
+              backgroundColor: showCreator
+                ? darkMode
+                  ? "#0f172a"
+                  : "#f9fafb"
+                : darkMode
+                ? "#e5e7eb"
+                : "#111827",
+              color: showCreator
+                ? darkMode
+                  ? "#e5e7eb"
+                  : "#111827"
+                : darkMode
+                ? "#020617"
+                : "#f9fafb",
+              fontSize: "0.9rem",
+              cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            {showCreator ? "Hide Creator" : "Show Creator"}
+          </button>
+        </div>
       </div>
 
       {/* TEMPLATE CREATOR (can be hidden) */}
@@ -190,11 +257,16 @@ export default function ClipboardTemplatesPage() {
           onTitleChange={setTitle}
           onBodyChange={setBody}
           onSubmit={handleAddTemplate}
+          darkMode={darkMode}
         />
       )}
 
       {/* SEARCH BAR */}
-      <SearchBar search={search} onSearchChange={setSearch} />
+      <SearchBar
+        search={search}
+        onSearchChange={setSearch}
+        darkMode={darkMode}
+      />
 
       {/* CLIPBOARD GRID */}
       <section
@@ -217,6 +289,8 @@ export default function ClipboardTemplatesPage() {
           onChangeEditingBody={setEditingBody}
           onSaveEdit={handleSaveEdit}
           onCancelEdit={handleCancelEdit}
+          recentlyAddedId={recentlyAddedId}
+          darkMode={darkMode}
         />
       </section>
     </main>

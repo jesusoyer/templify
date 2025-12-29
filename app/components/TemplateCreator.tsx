@@ -1,28 +1,63 @@
+import React from "react";
+
+type TemplateCreatorProps = {
+  title: string;
+  body: string;
+  onTitleChange: (value: string) => void;
+  onBodyChange: (value: string) => void;
+  onSubmit: (e: React.FormEvent) => void;
+  darkMode: boolean;
+};
+
 export default function TemplateCreator({
   title,
   body,
   onTitleChange,
   onBodyChange,
   onSubmit,
-}) {
-  return (
-  <section
-  style={{
-    width: "100%",
-    padding: "1rem",
-    border: "1px solid #d1d5db",
-    borderRadius: "8px",
-    backgroundColor: "white",
-    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.12)", // 👈 subtle shadow
-  }}
->
+  darkMode,
+}: TemplateCreatorProps) {
+  const cardBg = darkMode ? "#020617" : "white";
+  const borderBase = darkMode ? "#1d4ed8" : "#bfdbfe";
+  const accent = "#3b82f6";
+  const textColor = darkMode ? "#e5e7eb" : "#111827";
+  const inputBg = darkMode ? "#020617" : "white";
+  const inputBorder = darkMode ? "#475569" : "#ccc";
 
-      {/* New header inside the card */}
+  return (
+    <section
+      style={{
+        width: "100%",
+        padding: "1rem",
+
+        // explicit border, no shorthand
+        borderTopStyle: "solid",
+        borderBottomStyle: "solid",
+        borderLeftStyle: "solid",
+        borderRightStyle: "solid",
+
+        borderTopWidth: "3px",
+        borderBottomWidth: "3px",
+        borderLeftWidth: "1px",
+        borderRightWidth: "1px",
+
+        borderTopColor: accent,
+        borderBottomColor: accent,
+        borderLeftColor: borderBase,
+        borderRightColor: borderBase,
+
+        borderRadius: "10px",
+        backgroundColor: cardBg,
+        boxShadow: "0 6px 16px rgba(15, 23, 42, 0.18)",
+      }}
+    >
       <h2
         style={{
           fontSize: "1.1rem",
           fontWeight: 600,
           marginBottom: "0.75rem",
+          marginTop: 0,
+          color: textColor,
         }}
       >
         Create New Template
@@ -42,7 +77,10 @@ export default function TemplateCreator({
             gap: "0.25rem",
           }}
         >
-          <label htmlFor="title" style={{ fontWeight: 500 }}>
+          <label
+            htmlFor="title"
+            style={{ fontWeight: 500, color: textColor }}
+          >
             Title
           </label>
           <input
@@ -54,7 +92,9 @@ export default function TemplateCreator({
             style={{
               padding: "0.5rem 0.75rem",
               borderRadius: "6px",
-              border: "1px solid #ccc",
+              border: `1px solid ${inputBorder}`,
+              backgroundColor: inputBg,
+              color: textColor,
             }}
           />
         </div>
@@ -66,7 +106,10 @@ export default function TemplateCreator({
             gap: "0.25rem",
           }}
         >
-          <label htmlFor="body" style={{ fontWeight: 500 }}>
+          <label
+            htmlFor="body"
+            style={{ fontWeight: 500, color: textColor }}
+          >
             Template body
           </label>
           <textarea
@@ -78,7 +121,9 @@ export default function TemplateCreator({
             style={{
               padding: "0.5rem 0.75rem",
               borderRadius: "6px",
-              border: "1px solid #ccc",
+              border: `1px solid ${inputBorder}`,
+              backgroundColor: inputBg,
+              color: textColor,
               resize: "vertical",
             }}
           />
@@ -90,7 +135,7 @@ export default function TemplateCreator({
             padding: "0.6rem 1rem",
             borderRadius: "6px",
             border: "none",
-            backgroundColor: "#111827",
+            backgroundColor: "#2563eb", // blue save button
             color: "white",
             fontWeight: 500,
             cursor: "pointer",
