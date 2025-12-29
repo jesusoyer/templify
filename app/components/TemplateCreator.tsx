@@ -15,6 +15,17 @@ export default function TemplateCreator({
         backgroundColor: "white",
       }}
     >
+      {/* New header inside the card */}
+      <h2
+        style={{
+          fontSize: "1.1rem",
+          fontWeight: 600,
+          marginBottom: "0.75rem",
+        }}
+      >
+        Create New Template
+      </h2>
+
       <form
         onSubmit={onSubmit}
         style={{

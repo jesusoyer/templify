@@ -16,6 +16,9 @@ export default function ClipboardTemplatesPage() {
   const [editingTitle, setEditingTitle] = useState("");
   const [editingBody, setEditingBody] = useState("");
 
+  // NEW: show/hide creator
+  const [showCreator, setShowCreator] = useState(true);
+
   // Load from localStorage on first render
   useEffect(() => {
     try {
@@ -142,25 +145,57 @@ export default function ClipboardTemplatesPage() {
         gap: "1rem",
       }}
     >
-      <h1
+      {/* HEADER + TOGGLE */}
+      <div
         style={{
-          fontSize: "2rem",
-          fontWeight: "bold",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "1rem",
         }}
       >
-        Clipboard Templates
-      </h1>
+        <h1
+          style={{
+            fontSize: "2rem",
+            fontWeight: "bold",
+          }}
+        >
+          Clipboard Templates
+        </h1>
 
-      <TemplateCreator
-        title={title}
-        body={body}
-        onTitleChange={setTitle}
-        onBodyChange={setBody}
-        onSubmit={handleAddTemplate}
-      />
+        <button
+          type="button"
+          onClick={() => setShowCreator((prev) => !prev)}
+          style={{
+            padding: "0.4rem 0.8rem",
+            borderRadius: "999px",
+            border: "1px solid #d1d5db",
+            backgroundColor: showCreator ? "#f9fafb" : "#111827",
+            color: showCreator ? "#111827" : "#f9fafb",
+            fontSize: "0.9rem",
+            cursor: "pointer",
+            fontWeight: 500,
+          }}
+        >
+          {showCreator ? "Hide Creator" : "Show Creator"}
+        </button>
+      </div>
 
+      {/* TEMPLATE CREATOR (can be hidden) */}
+      {showCreator && (
+        <TemplateCreator
+          title={title}
+          body={body}
+          onTitleChange={setTitle}
+          onBodyChange={setBody}
+          onSubmit={handleAddTemplate}
+        />
+      )}
+
+      {/* SEARCH BAR */}
       <SearchBar search={search} onSearchChange={setSearch} />
 
+      {/* CLIPBOARD GRID */}
       <section
         style={{
           flex: 1,
