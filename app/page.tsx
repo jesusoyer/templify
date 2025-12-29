@@ -1,65 +1,188 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import TemplateCreator from "./components/TemplateCreator";
+import SearchBar from "./components/SearchBar";
+import TemplatesGrid from "./components/TemplatesGrid";
+
+export default function ClipboardTemplatesPage() {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [search, setSearch] = useState("");
+  const [templates, setTemplates] = useState([]);
+
+  // Editing state
+  const [editingId, setEditingId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [editingBody, setEditingBody] = useState("");
+
+  // Load from localStorage on first render
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("clipboard-templates");
+      if (stored) {
+        setTemplates(JSON.parse(stored));
+      }
+    } catch (err) {
+      console.error("Failed to load templates from localStorage", err);
+    }
+  }, []);
+
+  // Save to localStorage whenever templates change
+  useEffect(() => {
+    try {
+      localStorage.setItem("clipboard-templates", JSON.stringify(templates));
+    } catch (err) {
+      console.error("Failed to save templates to localStorage", err);
+    }
+  }, [templates]);
+
+  function handleAddTemplate(e) {
+    e.preventDefault();
+
+    const trimmedTitle = title.trim();
+    const trimmedBody = body.trim();
+
+    if (!trimmedTitle || !trimmedBody) {
+      alert("Title and body are required.");
+      return;
+    }
+
+    const newTemplate = {
+      id: Date.now().toString() + Math.random().toString(16),
+      title: trimmedTitle,
+      body: trimmedBody,
+    };
+
+    setTemplates((prev) => [newTemplate, ...prev]);
+    setTitle("");
+    setBody("");
+  }
+
+  function handleDeleteTemplate(id) {
+    setTemplates((prev) => prev.filter((t) => t.id !== id));
+
+    if (editingId === id) {
+      setEditingId(null);
+      setEditingTitle("");
+      setEditingBody("");
+    }
+  }
+
+  async function handleCopy(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        alert("Template body copied to clipboard!");
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        alert("Template body copied to clipboard!");
+      }
+    } catch (err) {
+      console.error("Failed to copy text", err);
+      alert("Could not copy to clipboard.");
+    }
+  }
+
+  // Start editing a template
+  function handleStartEdit(template) {
+    setEditingId(template.id);
+    setEditingTitle(template.title);
+    setEditingBody(template.body);
+  }
+
+  // Save edits
+  function handleSaveEdit(id) {
+    const trimmedTitle = editingTitle.trim();
+    const trimmedBody = editingBody.trim();
+
+    if (!trimmedTitle || !trimmedBody) {
+      alert("Title and body are required.");
+      return;
+    }
+
+    setTemplates((prev) =>
+      prev.map((t) =>
+        t.id === id ? { ...t, title: trimmedTitle, body: trimmedBody } : t
+      )
+    );
+
+    setEditingId(null);
+    setEditingTitle("");
+    setEditingBody("");
+  }
+
+  // Cancel editing
+  function handleCancelEdit() {
+    setEditingId(null);
+    setEditingTitle("");
+    setEditingBody("");
+  }
+
+  const normalizedSearch = search.toLowerCase();
+  const filteredTemplates = templates.filter((t) =>
+    t.title.toLowerCase().includes(normalizedSearch)
+  );
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main
+      style={{
+        minHeight: "100vh",
+        padding: "1rem 2rem",
+        width: "100vw",
+        boxSizing: "border-box",
+        fontFamily: "system-ui, sans-serif",
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+      }}
+    >
+      <h1
+        style={{
+          fontSize: "2rem",
+          fontWeight: "bold",
+        }}
+      >
+        Clipboard Templates
+      </h1>
+
+      <TemplateCreator
+        title={title}
+        body={body}
+        onTitleChange={setTitle}
+        onBodyChange={setBody}
+        onSubmit={handleAddTemplate}
+      />
+
+      <SearchBar search={search} onSearchChange={setSearch} />
+
+      <section
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          paddingRight: "0.25rem",
+          width: "100%",
+        }}
+      >
+        <TemplatesGrid
+          templates={filteredTemplates}
+          onCopy={handleCopy}
+          onDelete={handleDeleteTemplate}
+          editingId={editingId}
+          editingTitle={editingTitle}
+          editingBody={editingBody}
+          onStartEdit={handleStartEdit}
+          onChangeEditingTitle={setEditingTitle}
+          onChangeEditingBody={setEditingBody}
+          onSaveEdit={handleSaveEdit}
+          onCancelEdit={handleCancelEdit}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }
