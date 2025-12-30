@@ -32,6 +32,10 @@ export default function ClipboardTemplatesPage() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
 
+  // Search scope: "all" or a specific board.id
+  const [searchScopeBoardId, setSearchScopeBoardId] =
+    useState<string>("all");
+
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -44,7 +48,9 @@ export default function ClipboardTemplatesPage() {
   const [darkMode, setDarkMode] = useState(false);
 
   // Which template was just added (for highlight)
-  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
+  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(
+    null
+  );
 
   // Create-board modal
   const [showCreateBoardModal, setShowCreateBoardModal] = useState(false);
@@ -53,10 +59,12 @@ export default function ClipboardTemplatesPage() {
   // Assign-to-board modal
   const [showAssignBoardModal, setShowAssignBoardModal] = useState(false);
   const [assignBoardId, setAssignBoardId] = useState<string>("");
-  const [assignSource, setAssignSource] = useState<"existing" | "new" | null>(
+  const [assignSource, setAssignSource] = useState<
+    "existing" | "new" | null
+  >(null);
+  const [assignTemplateId, setAssignTemplateId] = useState<string | null>(
     null
   );
-  const [assignTemplateId, setAssignTemplateId] = useState<string | null>(null);
   const [pendingNewTemplateTitle, setPendingNewTemplateTitle] =
     useState<string>("");
   const [pendingNewTemplateBody, setPendingNewTemplateBody] =
@@ -67,7 +75,9 @@ export default function ClipboardTemplatesPage() {
 
   // delete-board modal
   const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
-  const [boardToDeleteId, setBoardToDeleteId] = useState<string | null>(null);
+  const [boardToDeleteId, setBoardToDeleteId] = useState<string | null>(
+    null
+  );
   const [boardToDeleteName, setBoardToDeleteName] = useState<string>("");
 
   // Load templates from localStorage (and migrate to Home board if needed)
@@ -95,7 +105,8 @@ export default function ClipboardTemplatesPage() {
         const parsed = JSON.parse(storedBoards) as Board[];
         if (parsed.length > 0) {
           setBoards(parsed);
-          const storedActive = localStorage.getItem("clipboard-active-board");
+          const storedActive =
+            localStorage.getItem("clipboard-active-board");
           if (storedActive && parsed.some((b) => b.id === storedActive)) {
             setActiveBoardId(storedActive);
           } else {
@@ -514,7 +525,7 @@ export default function ClipboardTemplatesPage() {
     setBoardToDeleteName("");
   }
 
-  // ---------- Filtering (global search across boards) ----------
+  // ---------- Filtering (with search scope) ----------
 
   const normalizedSearch = search.toLowerCase().trim();
 
@@ -527,15 +538,30 @@ export default function ClipboardTemplatesPage() {
   let gridCanDeleteBoard: boolean;
 
   if (normalizedSearch) {
-    // 🔍 Search across ALL boards
-    filteredTemplates = templates.filter((t) =>
-      t.title.toLowerCase().includes(normalizedSearch)
-    );
+    // We are searching
+    if (searchScopeBoardId === "all") {
+      // search across all boards
+      filteredTemplates = templates.filter((t) =>
+        t.title.toLowerCase().includes(normalizedSearch)
+      );
+      gridBoardName = `Search: "${search}" (all boards)`;
+    } else {
+      // search within a specific board
+      filteredTemplates = templates.filter(
+        (t) =>
+          t.boardId === searchScopeBoardId &&
+          t.title.toLowerCase().includes(normalizedSearch)
+      );
+      const scopeBoardName =
+        boards.find((b) => b.id === searchScopeBoardId)?.name ||
+        "Selected board";
+      gridBoardName = `Search: "${search}" (${scopeBoardName})`;
+    }
 
-    gridBoardName = `Search: "${search}" (all boards)`;
-    gridCanDeleteBoard = false; // don't show Delete Board while in global search view
+    // In search mode we don't show "Delete Board" in the grid header
+    gridCanDeleteBoard = false;
   } else {
-    // Normal per-board view
+    // Normal per-board view (no search text)
     filteredTemplates = baseActiveBoardTemplates;
 
     gridBoardName =
@@ -721,10 +747,10 @@ export default function ClipboardTemplatesPage() {
           body={body}
           onTitleChange={setTitle}
           onBodyChange={setBody}
-          onSubmit={handleAddTemplateToActiveBoard}       // 👈 now uses active board
+          onSubmit={handleAddTemplateToActiveBoard} // save to current board
           onAddToBoardClick={handleCreatorAddToBoardClick}
           darkMode={darkMode}
-          currentBoardName={creatorBoardName}            // 👈 drives button label
+          currentBoardName={creatorBoardName}
         />
       )}
 
@@ -733,6 +759,9 @@ export default function ClipboardTemplatesPage() {
         search={search}
         onSearchChange={setSearch}
         darkMode={darkMode}
+        boards={boards}
+        searchScopeBoardId={searchScopeBoardId}
+        onSearchScopeChange={setSearchScopeBoardId}
       />
 
       {/* CLIPBOARD GRID */}

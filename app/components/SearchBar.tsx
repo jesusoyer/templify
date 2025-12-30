@@ -1,15 +1,28 @@
 import React from "react";
 
+type Board = {
+  id: string;
+  name: string;
+};
+
 type SearchBarProps = {
   search: string;
   onSearchChange: (value: string) => void;
   darkMode: boolean;
+
+  // NEW: search scope
+  boards: Board[];
+  searchScopeBoardId: string; // "all" or a board.id
+  onSearchScopeChange: (boardId: string) => void;
 };
 
 export default function SearchBar({
   search,
   onSearchChange,
   darkMode,
+  boards,
+  searchScopeBoardId,
+  onSearchScopeChange,
 }: SearchBarProps) {
   const cardBg = darkMode ? "#020617" : "white";
   const borderBase = darkMode ? "#1d4ed8" : "#bfdbfe";
@@ -28,6 +41,7 @@ export default function SearchBar({
         width: "100%",
         padding: "0.75rem 1rem",
 
+        // explicit border, no shorthand
         borderTopStyle: "solid",
         borderBottomStyle: "solid",
         borderLeftStyle: "solid",
@@ -53,20 +67,25 @@ export default function SearchBar({
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: "0.35rem",
+          gap: "0.4rem",
         }}
       >
-        {/* Label row with Clear Search Bar right next to it */}
+        {/* Label + Clear button row */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "0.5rem",          // keeps them close together
+            gap: "0.5rem",
+            justifyContent: "space-between",
           }}
         >
           <label
             htmlFor="search"
-            style={{ fontWeight: 500, color: textColor, fontSize: "0.95rem" }}
+            style={{
+              fontWeight: 500,
+              color: textColor,
+              fontSize: "0.95rem",
+            }}
           >
             Search templates
           </label>
@@ -91,13 +110,13 @@ export default function SearchBar({
           )}
         </div>
 
-        {/* Input below */}
+        {/* Search input */}
         <input
           id="search"
           type="text"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Type to search titles across all boards..."
+          placeholder="Type to search titles..."
           style={{
             flex: 1,
             padding: "0.5rem 0.75rem",
@@ -107,6 +126,38 @@ export default function SearchBar({
             color: textColor,
           }}
         />
+
+        {/* Search scope: All boards or specific board */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            fontSize: "0.8rem",
+            color: darkMode ? "#9ca3af" : "#4b5563",
+          }}
+        >
+          <span>Search in:</span>
+          <select
+            value={searchScopeBoardId}
+            onChange={(e) => onSearchScopeChange(e.target.value)}
+            style={{
+              padding: "0.25rem 0.6rem",
+              borderRadius: "999px",
+              border: "1px solid #9ca3af",
+              backgroundColor: darkMode ? "#020617" : "white",
+              color: textColor,
+              fontSize: "0.8rem",
+            }}
+          >
+            <option value="all">All boards</option>
+            {boards.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </section>
   );
