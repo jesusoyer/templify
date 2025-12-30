@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from "react";
+"use client";
+
+import React, { useState, useEffect, type CSSProperties } from "react";
 
 type Template = {
   id: string;
@@ -6,6 +8,7 @@ type Template = {
   body: string;
   pinned?: boolean;
   pinnedAt?: number | null;
+  boardId?: string;
 };
 
 type TemplatesGridProps = {
@@ -24,6 +27,12 @@ type TemplatesGridProps = {
   darkMode: boolean;
   onPin: (id: string) => void;
   onUnpin: (id: string) => void;
+  onRequestAssignBoard: (templateId: string) => void;
+
+  // Board UI
+  activeBoardName: string;
+  canDeleteBoard: boolean;
+  onRequestDeleteBoard: () => void;
 };
 
 export default function TemplatesGrid({
@@ -42,6 +51,10 @@ export default function TemplatesGrid({
   darkMode,
   onPin,
   onUnpin,
+  onRequestAssignBoard,
+  activeBoardName,
+  canDeleteBoard,
+  onRequestDeleteBoard,
 }: TemplatesGridProps) {
   const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>(
     {}
@@ -56,16 +69,100 @@ export default function TemplatesGrid({
     function handleResize() {
       setWindowWidth(window.innerWidth);
     }
-    handleResize(); // set initial
+    handleResize(); // initial
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // 🔍 Are we in "search across all boards" mode?
+  const isSearchView = activeBoardName.startsWith("Search:");
+
+  // If board/search view is empty, still show header
   if (!templates || templates.length === 0) {
     return (
-      <p style={{ color: darkMode ? "#9ca3af" : "#6b7280" }}>
-        No templates saved yet.
-      </p>
+      <>
+        {/* Board / view indicator row still shows even if empty */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "0.5rem",
+            gap: "0.75rem",
+            flexWrap: "wrap",
+          }}
+        >
+          {/* LEFT: board name + delete board (hidden in search view) */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              flexWrap: "wrap",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.85rem",
+                color: darkMode ? "#9ca3af" : "#6b7280",
+              }}
+            >
+              {isSearchView ? "Current view:" : "Current board:"}
+            </span>
+            <span
+              style={{
+                fontSize: "1rem",
+                fontWeight: 600,
+                color: darkMode ? "#e5e7eb" : "#111827",
+              }}
+            >
+              {activeBoardName}
+            </span>
+            {!isSearchView && canDeleteBoard && (
+              <button
+                type="button"
+                onClick={onRequestDeleteBoard}
+                style={{
+                  padding: "0.25rem 0.65rem",
+                  borderRadius: "999px",
+                  border: "1px solid #b91c1c",
+                  backgroundColor: darkMode ? "#111827" : "#fef2f2",
+                  color: "#b91c1c",
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Delete board
+              </button>
+            )}
+          </div>
+
+          {/* RIGHT: no minimize button when empty */}
+        </div>
+
+        {/* Empty state message */}
+        {isSearchView ? (
+          <p
+            style={{
+              color: darkMode ? "#fecaca" : "#b91c1c", // 🔴 red message
+              fontSize: "0.9rem",
+            }}
+          >
+            No templates match your search. Clear the search box to see your
+            saved templates again.
+          </p>
+        ) : (
+          <p
+            style={{
+              color: darkMode ? "#9ca3af" : "#6b7280",
+              fontSize: "0.9rem",
+            }}
+          >
+            No templates in this board yet.
+          </p>
+        )}
+      </>
     );
   }
 
@@ -132,7 +229,7 @@ export default function TemplatesGrid({
   const numColumns =
     effectiveWidth >= 1200 ? 4 : effectiveWidth >= 768 ? 3 : 1;
 
-  // 🔹 Pinned first (ordered by pinnedAt), then unpinned in original order
+  // Pinned first (ordered by pinnedAt), then unpinned
   const pinnedTemplates = templates
     .filter((t) => t.pinned)
     .sort((a, b) => (a.pinnedAt ?? 0) - (b.pinnedAt ?? 0));
@@ -154,7 +251,7 @@ export default function TemplatesGrid({
   const bodyTextColor = darkMode ? "#e5e7eb" : "#111827";
   const bodyBg = darkMode ? "#020617" : "#f9fafb";
 
-  const bulkButtonStyle: React.CSSProperties = {
+  const bulkButtonStyle: CSSProperties = {
     padding: "0.35rem 0.9rem",
     borderRadius: "999px",
     border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`,
@@ -167,14 +264,64 @@ export default function TemplatesGrid({
 
   return (
     <>
-      {/* Bulk controls row */}
+      {/* Board indicator + bulk controls row */}
       <div
         style={{
           display: "flex",
-          justifyContent: "flex-end",
+          justifyContent: "space-between",
+          alignItems: "center",
           marginBottom: "0.5rem",
+          gap: "0.75rem",
+          flexWrap: "wrap",
         }}
       >
+        {/* LEFT: board name + delete board */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "0.85rem",
+              color: darkMode ? "#9ca3af" : "#6b7280",
+            }}
+          >
+            {isSearchView ? "Current view:" : "Current board:"}
+          </span>
+          <span
+            style={{
+              fontSize: "1rem",
+              fontWeight: 600,
+              color: darkMode ? "#e5e7eb" : "#111827",
+            }}
+          >
+            {activeBoardName}
+          </span>
+          {!isSearchView && canDeleteBoard && (
+            <button
+              type="button"
+              onClick={onRequestDeleteBoard}
+              style={{
+                padding: "0.25rem 0.65rem",
+                borderRadius: "999px",
+                border: "1px solid #b91c1c",
+                backgroundColor: darkMode ? "#111827" : "#fef2f2",
+                color: "#b91c1c",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+                fontWeight: 500,
+              }}
+            >
+              Delete board
+            </button>
+          )}
+        </div>
+
+        {/* RIGHT: bulk minimize/expand */}
         <button
           type="button"
           style={bulkButtonStyle}
@@ -214,8 +361,7 @@ export default function TemplatesGrid({
               const isRecentlyAdded = template.id === recentlyAddedId;
               const isPinned = !!template.pinned;
 
-              // base card style – no border shorthands
-              let cardStyle: React.CSSProperties = {
+              let cardStyle: CSSProperties = {
                 borderTopStyle: "solid",
                 borderBottomStyle: "solid",
                 borderLeftStyle: "solid",
@@ -245,7 +391,6 @@ export default function TemplatesGrid({
                   "box-shadow 0.25s ease, background-color 0.25s ease, border-color 0.25s ease",
               };
 
-              // pinned accent (orange top/bottom)
               if (isPinned) {
                 cardStyle = {
                   ...cardStyle,
@@ -254,7 +399,6 @@ export default function TemplatesGrid({
                 };
               }
 
-              // highlight newly added card
               if (isRecentlyAdded) {
                 cardStyle = {
                   ...cardStyle,
@@ -280,16 +424,15 @@ export default function TemplatesGrid({
                       gap: "0.25rem",
                     }}
                   >
-                    {/* left spacer */}
                     <div style={{ flex: 1 }} />
 
-                    {/* center: minimize / copy / edit / pin */}
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         gap: "0.25rem",
+                        flexWrap: "wrap",
                       }}
                     >
                       <button
@@ -359,7 +502,29 @@ export default function TemplatesGrid({
                             Edit
                           </button>
 
-                          {/* PIN / UNPIN */}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onRequestAssignBoard(template.id)
+                            }
+                            style={{
+                              padding: "0.2rem 0.6rem",
+                              borderRadius: "999px",
+                              border: `1px solid ${
+                                darkMode ? "#4b5563" : "#d1d5db"
+                              }`,
+                              backgroundColor: darkMode
+                                ? "#020617"
+                                : "white",
+                              color: darkMode ? "#e5e7eb" : "#111827",
+                              fontSize: "0.75rem",
+                              cursor: "pointer",
+                              fontWeight: 500,
+                            }}
+                          >
+                            Add to
+                          </button>
+
                           <button
                             type="button"
                             onClick={() =>
@@ -396,7 +561,6 @@ export default function TemplatesGrid({
                       )}
                     </div>
 
-                    {/* right: delete */}
                     <div
                       style={{
                         flex: 1,
@@ -576,7 +740,7 @@ export default function TemplatesGrid({
         ))}
       </div>
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* DELETE TEMPLATE MODAL */}
       {confirmDeleteId && (
         <div
           style={{

@@ -11,13 +11,26 @@ type Template = {
   body: string;
   pinned?: boolean;
   pinnedAt?: number | null;
+  boardId?: string;
 };
+
+type Board = {
+  id: string;
+  name: string;
+  isDefault?: boolean;
+};
+
+const HOME_BOARD_ID = "home-board";
 
 export default function ClipboardTemplatesPage() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [search, setSearch] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
+
+  // Boards
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
 
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -30,22 +43,89 @@ export default function ClipboardTemplatesPage() {
   // Dark mode
   const [darkMode, setDarkMode] = useState(false);
 
-  // Track which template was just added
+  // Which template was just added (for highlight)
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
-  // Load from localStorage on first render
+  // Create-board modal
+  const [showCreateBoardModal, setShowCreateBoardModal] = useState(false);
+  const [newBoardName, setNewBoardName] = useState("");
+
+  // Assign-to-board modal
+  const [showAssignBoardModal, setShowAssignBoardModal] = useState(false);
+  const [assignBoardId, setAssignBoardId] = useState<string>("");
+  const [assignSource, setAssignSource] = useState<"existing" | "new" | null>(
+    null
+  );
+  const [assignTemplateId, setAssignTemplateId] = useState<string | null>(null);
+  const [pendingNewTemplateTitle, setPendingNewTemplateTitle] =
+    useState<string>("");
+  const [pendingNewTemplateBody, setPendingNewTemplateBody] =
+    useState<string>("");
+
+  // inline "create board" from assign modal
+  const [assignNewBoardName, setAssignNewBoardName] = useState("");
+
+  // delete-board modal
+  const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
+  const [boardToDeleteId, setBoardToDeleteId] = useState<string | null>(null);
+  const [boardToDeleteName, setBoardToDeleteName] = useState<string>("");
+
+  // Load templates from localStorage (and migrate to Home board if needed)
   useEffect(() => {
     try {
       const stored = localStorage.getItem("clipboard-templates");
       if (stored) {
-        setTemplates(JSON.parse(stored));
+        const parsed = JSON.parse(stored) as Template[];
+        const withBoard = parsed.map((t) => ({
+          ...t,
+          boardId: t.boardId ?? HOME_BOARD_ID,
+        }));
+        setTemplates(withBoard);
       }
     } catch (err) {
       console.error("Failed to load templates from localStorage", err);
     }
   }, []);
 
-  // Save to localStorage whenever templates change
+  // Load boards & active board from localStorage
+  useEffect(() => {
+    try {
+      const storedBoards = localStorage.getItem("clipboard-boards");
+      if (storedBoards) {
+        const parsed = JSON.parse(storedBoards) as Board[];
+        if (parsed.length > 0) {
+          setBoards(parsed);
+          const storedActive = localStorage.getItem("clipboard-active-board");
+          if (storedActive && parsed.some((b) => b.id === storedActive)) {
+            setActiveBoardId(storedActive);
+          } else {
+            setActiveBoardId(parsed[0].id);
+          }
+          return;
+        }
+      }
+
+      // If no boards stored, create Home board
+      const homeBoard: Board = {
+        id: HOME_BOARD_ID,
+        name: "Home",
+        isDefault: true,
+      };
+      setBoards([homeBoard]);
+      setActiveBoardId(HOME_BOARD_ID);
+    } catch (err) {
+      console.error("Failed to load boards from localStorage", err);
+      const homeBoard: Board = {
+        id: HOME_BOARD_ID,
+        name: "Home",
+        isDefault: true,
+      };
+      setBoards([homeBoard]);
+      setActiveBoardId(HOME_BOARD_ID);
+    }
+  }, []);
+
+  // Save templates to localStorage whenever they change
   useEffect(() => {
     try {
       localStorage.setItem("clipboard-templates", JSON.stringify(templates));
@@ -53,6 +133,25 @@ export default function ClipboardTemplatesPage() {
       console.error("Failed to save templates to localStorage", err);
     }
   }, [templates]);
+
+  // Save boards to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("clipboard-boards", JSON.stringify(boards));
+    } catch (err) {
+      console.error("Failed to save boards to localStorage", err);
+    }
+  }, [boards]);
+
+  // Save active board to localStorage
+  useEffect(() => {
+    if (!activeBoardId) return;
+    try {
+      localStorage.setItem("clipboard-active-board", activeBoardId);
+    } catch (err) {
+      console.error("Failed to save active board", err);
+    }
+  }, [activeBoardId]);
 
   // Clear the highlight after ~1s
   useEffect(() => {
@@ -63,7 +162,10 @@ export default function ClipboardTemplatesPage() {
     return () => clearTimeout(timeout);
   }, [recentlyAddedId]);
 
-  function handleAddTemplate(e: React.FormEvent) {
+  // ---------- Template creation ----------
+
+  // Save to the *currently active* board (or Home if missing)
+  function handleAddTemplateToActiveBoard(e: React.FormEvent) {
     e.preventDefault();
 
     const trimmedTitle = title.trim();
@@ -74,18 +176,47 @@ export default function ClipboardTemplatesPage() {
       return;
     }
 
+    const targetBoardId = activeBoardId || HOME_BOARD_ID;
+
     const newTemplate: Template = {
       id: Date.now().toString() + Math.random().toString(16),
       title: trimmedTitle,
       body: trimmedBody,
       pinned: false,
       pinnedAt: null,
+      boardId: targetBoardId,
     };
 
     setTemplates((prev) => [newTemplate, ...prev]);
     setTitle("");
     setBody("");
     setRecentlyAddedId(newTemplate.id);
+  }
+
+  // Creator: "Add to" → open assign-board modal for a NEW template
+  function handleCreatorAddToBoardClick() {
+    const trimmedTitle = title.trim();
+    const trimmedBody = body.trim();
+
+    if (!trimmedTitle || !trimmedBody) {
+      alert("Title and body are required before adding to a board.");
+      return;
+    }
+
+    if (!boards.length) {
+      alert("Please create a board first.");
+      return;
+    }
+
+    setPendingNewTemplateTitle(trimmedTitle);
+    setPendingNewTemplateBody(trimmedBody);
+    setAssignSource("new");
+    setAssignTemplateId(null);
+
+    const defaultBoardId =
+      activeBoardId || boards[0]?.id || HOME_BOARD_ID;
+    setAssignBoardId(defaultBoardId);
+    setShowAssignBoardModal(true);
   }
 
   function handleDeleteTemplate(id: string) {
@@ -153,7 +284,8 @@ export default function ClipboardTemplatesPage() {
     setEditingBody("");
   }
 
-  // 🔹 Pin / Unpin handlers
+  // ---------- Pin / Unpin ----------
+
   function handlePinTemplate(id: string) {
     const now = Date.now();
     setTemplates((prev) =>
@@ -162,7 +294,6 @@ export default function ClipboardTemplatesPage() {
           ? {
               ...t,
               pinned: true,
-              // only set pinnedAt once – if it already has one, keep it
               pinnedAt: t.pinnedAt ?? now,
             }
           : t
@@ -184,10 +315,243 @@ export default function ClipboardTemplatesPage() {
     );
   }
 
-  const normalizedSearch = search.toLowerCase();
-  const filteredTemplates = templates.filter((t) =>
-    t.title.toLowerCase().includes(normalizedSearch)
+  // ---------- Boards (standalone create) ----------
+
+  function handleCreateBoard() {
+    const trimmed = newBoardName.trim();
+    if (!trimmed) {
+      alert("Board name is required.");
+      return;
+    }
+
+    const id =
+      trimmed.toLowerCase().replace(/\s+/g, "-") +
+      "-" +
+      Date.now().toString(36);
+
+    const newBoard: Board = {
+      id,
+      name: trimmed,
+      isDefault: false,
+    };
+
+    setBoards((prev) => [...prev, newBoard]);
+    setActiveBoardId(newBoard.id);
+    setNewBoardName("");
+    setShowCreateBoardModal(false);
+  }
+
+  function handleOpenCreateBoardModal() {
+    setNewBoardName("");
+    setShowCreateBoardModal(true);
+  }
+
+  function handleCancelCreateBoard() {
+    setNewBoardName("");
+    setShowCreateBoardModal(false);
+  }
+
+  // ---------- Assign template to board (existing template) ----------
+
+  function handleRequestAssignBoard(templateId: string) {
+    if (!boards.length) {
+      alert("Please create a board first.");
+      return;
+    }
+
+    const template = templates.find((t) => t.id === templateId);
+    const defaultBoardId =
+      template?.boardId ||
+      activeBoardId ||
+      boards[0]?.id ||
+      HOME_BOARD_ID;
+
+    setAssignSource("existing");
+    setAssignTemplateId(templateId);
+    setAssignBoardId(defaultBoardId);
+    setShowAssignBoardModal(true);
+  }
+
+  // Helper: do the actual assignment (used by Confirm and "Create & use")
+  function performAssignToBoard(boardId: string) {
+    if (!boardId) {
+      alert("Please choose a board.");
+      return;
+    }
+
+    if (assignSource === "existing" && assignTemplateId) {
+      // move existing template to chosen board
+      setTemplates((prev) =>
+        prev.map((t) =>
+          t.id === assignTemplateId ? { ...t, boardId } : t
+        )
+      );
+    } else if (assignSource === "new") {
+      // create a brand new template into chosen board
+      const trimmedTitle = pendingNewTemplateTitle.trim();
+      const trimmedBody = pendingNewTemplateBody.trim();
+
+      if (!trimmedTitle || !trimmedBody) {
+        alert("Title and body are required.");
+        return;
+      }
+
+      const newTemplate: Template = {
+        id: Date.now().toString() + Math.random().toString(16),
+        title: trimmedTitle,
+        body: trimmedBody,
+        pinned: false,
+        pinnedAt: null,
+        boardId,
+      };
+
+      setTemplates((prev) => [newTemplate, ...prev]);
+      setTitle("");
+      setBody("");
+      setRecentlyAddedId(newTemplate.id);
+    }
+
+    // reset assign state
+    setShowAssignBoardModal(false);
+    setAssignBoardId("");
+    setAssignTemplateId(null);
+    setAssignSource(null);
+    setPendingNewTemplateTitle("");
+    setPendingNewTemplateBody("");
+    setAssignNewBoardName("");
+  }
+
+  function handleConfirmAssignBoard() {
+    performAssignToBoard(assignBoardId);
+  }
+
+  function handleCancelAssignBoard() {
+    setShowAssignBoardModal(false);
+    setAssignBoardId("");
+    setAssignTemplateId(null);
+    setAssignSource(null);
+    setPendingNewTemplateTitle("");
+    setPendingNewTemplateBody("");
+    setAssignNewBoardName("");
+  }
+
+  // create a board *from* the assign modal and immediately use it
+  function handleCreateBoardFromAssign() {
+    const trimmed = assignNewBoardName.trim();
+    if (!trimmed) {
+      alert("Board name is required.");
+      return;
+    }
+
+    const id =
+      trimmed.toLowerCase().replace(/\s+/g, "-") +
+      "-" +
+      Date.now().toString(36);
+
+    const newBoard: Board = {
+      id,
+      name: trimmed,
+      isDefault: false,
+    };
+
+    setBoards((prev) => [...prev, newBoard]);
+    setActiveBoardId(newBoard.id);
+    setAssignBoardId(id);
+    setAssignNewBoardName("");
+
+    // Immediately assign this template / new template into the new board
+    performAssignToBoard(id);
+  }
+
+  // ---------- Delete board ----------
+
+  function handleRequestDeleteBoard() {
+    if (!activeBoardId || activeBoardId === HOME_BOARD_ID) return;
+
+    const board = boards.find((b) => b.id === activeBoardId);
+    setBoardToDeleteId(activeBoardId);
+    setBoardToDeleteName(board?.name || "this board");
+    setShowDeleteBoardModal(true);
+  }
+
+  function handleConfirmDeleteBoard() {
+    if (!boardToDeleteId) {
+      setShowDeleteBoardModal(false);
+      return;
+    }
+    if (boardToDeleteId === HOME_BOARD_ID) {
+      setShowDeleteBoardModal(false);
+      return;
+    }
+
+    setBoards((prevBoards) => {
+      const updated = prevBoards.filter((b) => b.id !== boardToDeleteId);
+
+      setActiveBoardId((prevActive) => {
+        if (prevActive && prevActive !== boardToDeleteId) return prevActive;
+
+        const home = updated.find((b) => b.id === HOME_BOARD_ID);
+        if (home) return home.id;
+
+        return updated[0]?.id ?? null;
+      });
+
+      return updated;
+    });
+
+    setTemplates((prev) =>
+      prev.filter((t) => t.boardId !== boardToDeleteId)
+    );
+
+    setShowDeleteBoardModal(false);
+    setBoardToDeleteId(null);
+    setBoardToDeleteName("");
+  }
+
+  function handleCancelDeleteBoard() {
+    setShowDeleteBoardModal(false);
+    setBoardToDeleteId(null);
+    setBoardToDeleteName("");
+  }
+
+  // ---------- Filtering (global search across boards) ----------
+
+  const normalizedSearch = search.toLowerCase().trim();
+
+  const baseActiveBoardTemplates = templates.filter((t) =>
+    activeBoardId ? t.boardId === activeBoardId : true
   );
+
+  let filteredTemplates: Template[];
+  let gridBoardName: string;
+  let gridCanDeleteBoard: boolean;
+
+  if (normalizedSearch) {
+    // 🔍 Search across ALL boards
+    filteredTemplates = templates.filter((t) =>
+      t.title.toLowerCase().includes(normalizedSearch)
+    );
+
+    gridBoardName = `Search: "${search}" (all boards)`;
+    gridCanDeleteBoard = false; // don't show Delete Board while in global search view
+  } else {
+    // Normal per-board view
+    filteredTemplates = baseActiveBoardTemplates;
+
+    gridBoardName =
+      boards.find((b) => b.id === activeBoardId)?.name ??
+      boards.find((b) => b.id === HOME_BOARD_ID)?.name ??
+      "Home";
+
+    gridCanDeleteBoard =
+      !!activeBoardId && activeBoardId !== HOME_BOARD_ID;
+  }
+
+  // For the creator button label: always based on the actual active board, not search
+  const creatorBoardName =
+    boards.find((b) => b.id === activeBoardId)?.name ??
+    boards.find((b) => b.id === HOME_BOARD_ID)?.name ??
+    "Home";
 
   const mainBg = darkMode ? "#020617" : "#e5e7eb";
   const mainText = darkMode ? "#e5e7eb" : "#111827";
@@ -207,33 +571,99 @@ export default function ClipboardTemplatesPage() {
         color: mainText,
       }}
     >
-      {/* HEADER + TOGGLES */}
+      {/* HEADER + BOARD CONTROLS + TOGGLES */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           gap: "1rem",
+          flexWrap: "wrap",
         }}
       >
-        <h1
+        <div
           style={{
-            fontSize: "2rem",
-            fontWeight: "bold",
-            margin: 0,
-            color: mainText,
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.35rem",
           }}
         >
-          Clipboard Templates
-        </h1>
+          <h1
+            style={{
+              fontSize: "2rem",
+              fontWeight: "bold",
+              margin: 0,
+              color: mainText,
+            }}
+          >
+            TEMPLIFY - A clipboard on Steroids!
+          </h1>
 
+          {/* Board selector (still controls active board even if search is global) */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              flexWrap: "wrap",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.9rem",
+                color: darkMode ? "#9ca3af" : "#4b5563",
+              }}
+            >
+              Board:
+            </span>
+            <select
+              value={activeBoardId ?? HOME_BOARD_ID}
+              onChange={(e) => setActiveBoardId(e.target.value)}
+              style={{
+                padding: "0.3rem 0.6rem",
+                borderRadius: "999px",
+                border: "1px solid #9ca3af",
+                backgroundColor: darkMode ? "#020617" : "white",
+                color: mainText,
+                fontSize: "0.9rem",
+              }}
+            >
+              {boards.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Right-side controls */}
         <div
           style={{
             display: "flex",
             gap: "0.5rem",
             alignItems: "center",
+            flexWrap: "wrap",
           }}
         >
+          {/* Create board button – to the LEFT of dark mode */}
+          <button
+            type="button"
+            onClick={handleOpenCreateBoardModal}
+            style={{
+              padding: "0.4rem 0.8rem",
+              borderRadius: "999px",
+              border: "1px solid #3b82f6",
+              backgroundColor: darkMode ? "#020617" : "#eff6ff",
+              color: darkMode ? "#bfdbfe" : "#1d4ed8",
+              fontSize: "0.9rem",
+              cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            + Create Board
+          </button>
+
           {/* Dark mode toggle */}
           <button
             type="button"
@@ -291,8 +721,10 @@ export default function ClipboardTemplatesPage() {
           body={body}
           onTitleChange={setTitle}
           onBodyChange={setBody}
-          onSubmit={handleAddTemplate}
+          onSubmit={handleAddTemplateToActiveBoard}       // 👈 now uses active board
+          onAddToBoardClick={handleCreatorAddToBoardClick}
           darkMode={darkMode}
+          currentBoardName={creatorBoardName}            // 👈 drives button label
         />
       )}
 
@@ -326,10 +758,386 @@ export default function ClipboardTemplatesPage() {
           onCancelEdit={handleCancelEdit}
           recentlyAddedId={recentlyAddedId}
           darkMode={darkMode}
-          onPin={handlePinTemplate}      // 👈 added
-          onUnpin={handleUnpinTemplate}  // 👈 added
+          onPin={handlePinTemplate}
+          onUnpin={handleUnpinTemplate}
+          onRequestAssignBoard={handleRequestAssignBoard}
+          activeBoardName={gridBoardName}
+          canDeleteBoard={gridCanDeleteBoard}
+          onRequestDeleteBoard={handleRequestDeleteBoard}
         />
       </section>
+
+      {/* CREATE BOARD MODAL */}
+      {showCreateBoardModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 60,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: darkMode ? "#020617" : "white",
+              padding: "1.25rem 1.5rem",
+              borderRadius: "10px",
+              minWidth: "280px",
+              maxWidth: "90vw",
+              boxShadow:
+                "0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5)",
+              border: darkMode ? "1px solid #4b5563" : "none",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                marginBottom: "0.5rem",
+                fontSize: "1rem",
+                fontWeight: 600,
+                color: darkMode ? "#e5e7eb" : "#111827",
+              }}
+            >
+              Create custom board
+            </h3>
+            <p
+              style={{
+                margin: 0,
+                marginBottom: "0.75rem",
+                fontSize: "0.9rem",
+                color: darkMode ? "#9ca3af" : "#4b5563",
+              }}
+            >
+              What is the name of your custom board?
+            </p>
+            <input
+              type="text"
+              value={newBoardName}
+              onChange={(e) => setNewBoardName(e.target.value)}
+              placeholder="e.g. Sales replies, Support snippets..."
+              style={{
+                width: "100%",
+                padding: "0.5rem 0.75rem",
+                borderRadius: "6px",
+                border: "1px solid #9ca3af",
+                backgroundColor: darkMode ? "#020617" : "white",
+                color: darkMode ? "#e5e7eb" : "#111827",
+                marginBottom: "0.75rem",
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.5rem",
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleCancelCreateBoard}
+                style={{
+                  padding: "0.35rem 0.8rem",
+                  borderRadius: "6px",
+                  border: `1px solid ${
+                    darkMode ? "#4b5563" : "#d1d5db"
+                  }`,
+                  backgroundColor: darkMode ? "#020617" : "white",
+                  color: darkMode ? "#e5e7eb" : "#111827",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateBoard}
+                style={{
+                  padding: "0.35rem 0.8rem",
+                  borderRadius: "6px",
+                  border: "none",
+                  backgroundColor: "#2563eb",
+                  color: "white",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ASSIGN TO BOARD MODAL */}
+      {showAssignBoardModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 60,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: darkMode ? "#020617" : "white",
+              padding: "1.25rem 1.5rem",
+              borderRadius: "10px",
+              minWidth: "280px",
+              maxWidth: "90vw",
+              boxShadow:
+                "0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5)",
+              border: darkMode ? "1px solid #4b5563" : "none",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                marginBottom: "0.5rem",
+                fontSize: "1rem",
+                fontWeight: 600,
+                color: darkMode ? "#e5e7eb" : "#111827",
+              }}
+            >
+              {assignSource === "existing"
+                ? "Add template to board"
+                : "Save template to board"}
+            </h3>
+            <p
+              style={{
+                margin: 0,
+                marginBottom: "0.75rem",
+                fontSize: "0.9rem",
+                color: darkMode ? "#9ca3af" : "#4b5563",
+              }}
+            >
+              Choose a board, or create a new one and use it right away.
+            </p>
+
+            {/* existing boards dropdown */}
+            <select
+              value={assignBoardId}
+              onChange={(e) => setAssignBoardId(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.45rem 0.7rem",
+                borderRadius: "6px",
+                border: "1px solid #9ca3af",
+                backgroundColor: darkMode ? "#020617" : "white",
+                color: darkMode ? "#e5e7eb" : "#111827",
+                marginBottom: "0.75rem",
+              }}
+            >
+              {boards.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Inline create-new-board + use it */}
+            <div
+              style={{
+                marginBottom: "0.75rem",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  marginBottom: "0.35rem",
+                  fontSize: "0.85rem",
+                  color: darkMode ? "#9ca3af" : "#6b7280",
+                }}
+              >
+                Or create a new board and assign this template to it:
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                <input
+                  type="text"
+                  value={assignNewBoardName}
+                  onChange={(e) => setAssignNewBoardName(e.target.value)}
+                  placeholder="New board name"
+                  style={{
+                    flex: 1,
+                    minWidth: "140px",
+                    padding: "0.4rem 0.6rem",
+                    borderRadius: "6px",
+                    border: "1px solid #9ca3af",
+                    backgroundColor: darkMode ? "#020617" : "white",
+                    color: darkMode ? "#e5e7eb" : "#111827",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleCreateBoardFromAssign}
+                  style={{
+                    padding: "0.4rem 0.8rem",
+                    borderRadius: "6px",
+                    border: "none",
+                    backgroundColor: "#2563eb",
+                    color: "white",
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Create & use
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.5rem",
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleCancelAssignBoard}
+                style={{
+                  padding: "0.35rem 0.8rem",
+                  borderRadius: "6px",
+                  border: `1px solid ${
+                    darkMode ? "#4b5563" : "#d1d5db"
+                  }`,
+                  backgroundColor: darkMode ? "#020617" : "white",
+                  color: darkMode ? "#e5e7eb" : "#111827",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAssignBoard}
+                style={{
+                  padding: "0.35rem 0.8rem",
+                  borderRadius: "6px",
+                  border: "none",
+                  backgroundColor: "#2563eb",
+                  color: "white",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE BOARD MODAL */}
+      {showDeleteBoardModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 70,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: darkMode ? "#020617" : "white",
+              padding: "1.25rem 1.5rem",
+              borderRadius: "10px",
+              minWidth: "280px",
+              maxWidth: "90vw",
+              boxShadow:
+                "0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5)",
+              border: darkMode ? "1px solid #4b5563" : "none",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                marginBottom: "0.5rem",
+                fontSize: "1rem",
+                fontWeight: 600,
+                color: darkMode ? "#e5e7eb" : "#111827",
+              }}
+            >
+              Delete board?
+            </h3>
+            <p
+              style={{
+                margin: 0,
+                marginBottom: "0.75rem",
+                fontSize: "0.9rem",
+                color: darkMode ? "#9ca3af" : "#4b5563",
+              }}
+            >
+              Are you sure you want to delete the board{" "}
+              <strong>{boardToDeleteName}</strong> and all templates in it?
+              This cannot be undone.
+            </p>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.5rem",
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleCancelDeleteBoard}
+                style={{
+                  padding: "0.35rem 0.8rem",
+                  borderRadius: "6px",
+                  border: `1px solid ${
+                    darkMode ? "#4b5563" : "#d1d5db"
+                  }`,
+                  backgroundColor: darkMode ? "#020617" : "white",
+                  color: darkMode ? "#e5e7eb" : "#111827",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteBoard}
+                style={{
+                  padding: "0.35rem 0.8rem",
+                  borderRadius: "6px",
+                  border: "none",
+                  backgroundColor: "#b91c1c",
+                  color: "white",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Delete board
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

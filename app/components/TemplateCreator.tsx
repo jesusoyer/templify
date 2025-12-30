@@ -5,8 +5,10 @@ type TemplateCreatorProps = {
   body: string;
   onTitleChange: (value: string) => void;
   onBodyChange: (value: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
+  onSubmit: (e: React.FormEvent) => void; // Save to current board
+  onAddToBoardClick: () => void;          // Open board modal
   darkMode: boolean;
+  currentBoardName: string;
 };
 
 export default function TemplateCreator({
@@ -15,7 +17,9 @@ export default function TemplateCreator({
   onTitleChange,
   onBodyChange,
   onSubmit,
+  onAddToBoardClick,
   darkMode,
+  currentBoardName,
 }: TemplateCreatorProps) {
   const cardBg = darkMode ? "#020617" : "white";
   const borderBase = darkMode ? "#1d4ed8" : "#bfdbfe";
@@ -23,6 +27,15 @@ export default function TemplateCreator({
   const textColor = darkMode ? "#e5e7eb" : "#111827";
   const inputBg = darkMode ? "#020617" : "white";
   const inputBorder = darkMode ? "#475569" : "#ccc";
+
+  const trimmedBoardName = currentBoardName?.trim() || "Home";
+  const isHome =
+    trimmedBoardName.toLowerCase() === "home" ||
+    trimmedBoardName.toLowerCase() === "home board";
+
+  const primaryButtonLabel = isHome
+    ? "Save to Default Home Board"
+    : `Save to ${trimmedBoardName}`;
 
   return (
     <section
@@ -88,7 +101,7 @@ export default function TemplateCreator({
             type="text"
             value={title}
             onChange={(e) => onTitleChange(e.target.value)}
-            placeholder="e.g. Welcome email, Bug report template..."
+            placeholder="Write a title with keywords for easy search"
             style={{
               padding: "0.5rem 0.75rem",
               borderRadius: "6px",
@@ -129,21 +142,45 @@ export default function TemplateCreator({
           />
         </div>
 
-        <button
-          type="submit"
+        {/* Buttons row */}
+        <div
           style={{
-            padding: "0.6rem 1rem",
-            borderRadius: "6px",
-            border: "none",
-            backgroundColor: "#2563eb", // blue save button
-            color: "white",
-            fontWeight: 500,
-            cursor: "pointer",
-            alignSelf: "flex-start",
+            display: "flex",
+            gap: "0.5rem",
+            flexWrap: "wrap",
           }}
         >
-          Save template
-        </button>
+          <button
+            type="submit"
+            style={{
+              padding: "0.6rem 1rem",
+              borderRadius: "6px",
+              border: "none",
+              backgroundColor: "#2563eb",
+              color: "white",
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            {primaryButtonLabel}
+          </button>
+
+          <button
+            type="button"
+            onClick={onAddToBoardClick}
+            style={{
+              padding: "0.6rem 1rem",
+              borderRadius: "6px",
+              border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`,
+              backgroundColor: darkMode ? "#020617" : "white",
+              color: textColor,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            Add to custom board…
+          </button>
+        </div>
       </form>
     </section>
   );

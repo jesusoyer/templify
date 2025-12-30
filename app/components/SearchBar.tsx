@@ -18,20 +18,23 @@ export default function SearchBar({
   const inputBg = darkMode ? "#020617" : "white";
   const inputBorder = darkMode ? "#475569" : "#ccc";
 
+  const handleClear = () => {
+    onSearchChange("");
+  };
+
   return (
     <section
       style={{
         width: "100%",
         padding: "0.75rem 1rem",
 
-        // ✅ explicit borders per side – NO border/borderWidth/borderColor shorthands
         borderTopStyle: "solid",
         borderBottomStyle: "solid",
         borderLeftStyle: "solid",
         borderRightStyle: "solid",
 
-        borderTopWidth: "3px",
-        borderBottomWidth: "3px",
+        borderTopWidth: "2px",
+        borderBottomWidth: "2px",
         borderLeftWidth: "1px",
         borderRightWidth: "1px",
 
@@ -42,32 +45,63 @@ export default function SearchBar({
 
         borderRadius: "10px",
         backgroundColor: cardBg,
-        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.14)",
+        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.16)",
+        marginBottom: "0.5rem",
       }}
     >
       <div
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: "0.25rem",
+          gap: "0.35rem",
         }}
       >
-        <label
-          htmlFor="search"
-          style={{ fontWeight: 500, color: textColor }}
+        {/* Label row with Clear Search Bar right next to it */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",          // keeps them close together
+          }}
         >
-          Search by title
-        </label>
+          <label
+            htmlFor="search"
+            style={{ fontWeight: 500, color: textColor, fontSize: "0.95rem" }}
+          >
+            Search templates
+          </label>
+
+          {search.trim().length > 0 && (
+            <button
+              type="button"
+              onClick={handleClear}
+              style={{
+                padding: "0.35rem 0.9rem",
+                borderRadius: "999px",
+                border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`,
+                backgroundColor: darkMode ? "#020617" : "white",
+                color: textColor,
+                fontSize: "0.8rem",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Clear Search Bar
+            </button>
+          )}
+        </div>
+
+        {/* Input below */}
         <input
           id="search"
           type="text"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Start typing to filter templates..."
+          placeholder="Type to search titles across all boards..."
           style={{
+            flex: 1,
             padding: "0.5rem 0.75rem",
             borderRadius: "6px",
-            // This is OK: we are NOT using side-specific border props on the input
             border: `1px solid ${inputBorder}`,
             backgroundColor: inputBg,
             color: textColor,
