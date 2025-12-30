@@ -742,16 +742,32 @@ export default function ClipboardTemplatesPage() {
 
       {/* TEMPLATE CREATOR (can be hidden) */}
       {showCreator && (
-        <TemplateCreator
-          title={title}
-          body={body}
-          onTitleChange={setTitle}
-          onBodyChange={setBody}
-          onSubmit={handleAddTemplateToActiveBoard} // save to current board
-          onAddToBoardClick={handleCreatorAddToBoardClick}
-          darkMode={darkMode}
-          currentBoardName={creatorBoardName}
-        />
+        <>
+          <TemplateCreator
+            title={title}
+            body={body}
+            onTitleChange={setTitle}
+            onBodyChange={setBody}
+            onSubmit={handleAddTemplateToActiveBoard} // save to current board
+            onAddToBoardClick={handleCreatorAddToBoardClick}
+            darkMode={darkMode}
+            currentBoardName={creatorBoardName}
+          />
+          {/* Small safety notice under the creator */}
+          <p
+            style={{
+              marginTop: "0.25rem",
+              fontSize: "0.75rem",
+              color: darkMode ? "#9ca3af" : "#6b7280",
+              maxWidth: "480px",
+            }}
+          >
+            Your templates are stored locally in this browser.
+            <br />
+            Please don&apos;t paste passwords, API keys, or highly sensitive
+            data.
+          </p>
+        </>
       )}
 
       {/* SEARCH BAR */}
@@ -1025,7 +1041,7 @@ export default function ClipboardTemplatesPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  Create & use
+                  Create &amp; use
                 </button>
               </div>
             </div>
