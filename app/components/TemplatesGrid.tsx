@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 type Template = {
   id: string;
   title: string;
   body: string;
+  pinned?: boolean;
+  pinnedAt?: number | null;
 };
 
 type TemplatesGridProps = {
@@ -20,6 +22,8 @@ type TemplatesGridProps = {
   onCancelEdit: () => void;
   recentlyAddedId?: string | null;
   darkMode: boolean;
+  onPin: (id: string) => void;
+  onUnpin: (id: string) => void;
 };
 
 export default function TemplatesGrid({
@@ -36,12 +40,26 @@ export default function TemplatesGrid({
   onCancelEdit,
   recentlyAddedId,
   darkMode,
+  onPin,
+  onUnpin,
 }: TemplatesGridProps) {
   const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>(
     {}
   );
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteTitle, setConfirmDeleteTitle] = useState<string>("");
+
+  // Track window width for responsive columns
+  const [windowWidth, setWindowWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    function handleResize() {
+      setWindowWidth(window.innerWidth);
+    }
+    handleResize(); // set initial
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   if (!templates || templates.length === 0) {
     return (
@@ -83,9 +101,48 @@ export default function TemplatesGrid({
     setConfirmDeleteTitle("");
   }
 
-  const numColumns = 4;
+  // bulk collapse / expand
+  const allCollapsed = templates.length
+    ? templates.every((t) => collapsedById[t.id])
+    : false;
+
+  function collapseAll() {
+    const next: Record<string, boolean> = {};
+    templates.forEach((t) => {
+      next[t.id] = true;
+    });
+    setCollapsedById(next);
+  }
+
+  function expandAll() {
+    const next: Record<string, boolean> = {};
+    templates.forEach((t) => {
+      next[t.id] = false;
+    });
+    setCollapsedById(next);
+  }
+
+  const bulkLabel = allCollapsed ? "Expand all" : "Minimize all";
+
+  // Responsive column count:
+  //  - >= 1200px -> 4
+  //  - >= 768px  -> 3
+  //  - else      -> 1
+  const effectiveWidth = windowWidth ?? 1200;
+  const numColumns =
+    effectiveWidth >= 1200 ? 4 : effectiveWidth >= 768 ? 3 : 1;
+
+  // 🔹 Pinned first (ordered by pinnedAt), then unpinned in original order
+  const pinnedTemplates = templates
+    .filter((t) => t.pinned)
+    .sort((a, b) => (a.pinnedAt ?? 0) - (b.pinnedAt ?? 0));
+
+  const unpinnedTemplates = templates.filter((t) => !t.pinned);
+
+  const orderedTemplates: Template[] = [...pinnedTemplates, ...unpinnedTemplates];
+
   const columns: Template[][] = Array.from({ length: numColumns }, () => []);
-  templates.forEach((template, index) => {
+  orderedTemplates.forEach((template, index) => {
     const colIndex = index % numColumns;
     columns[colIndex].push(template);
   });
@@ -97,8 +154,43 @@ export default function TemplatesGrid({
   const bodyTextColor = darkMode ? "#e5e7eb" : "#111827";
   const bodyBg = darkMode ? "#020617" : "#f9fafb";
 
+  const bulkButtonStyle: React.CSSProperties = {
+    padding: "0.35rem 0.9rem",
+    borderRadius: "999px",
+    border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`,
+    backgroundColor: darkMode ? "#020617" : "white",
+    color: darkMode ? "#e5e7eb" : "#111827",
+    fontSize: "0.85rem",
+    cursor: "pointer",
+    fontWeight: 500,
+  };
+
   return (
     <>
+      {/* Bulk controls row */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          marginBottom: "0.5rem",
+        }}
+      >
+        <button
+          type="button"
+          style={bulkButtonStyle}
+          onClick={() => {
+            if (allCollapsed) {
+              expandAll();
+            } else {
+              collapseAll();
+            }
+          }}
+        >
+          {bulkLabel}
+        </button>
+      </div>
+
+      {/* Masonry-like columns (responsive numColumns) */}
       <div
         style={{
           display: "flex",
@@ -120,8 +212,9 @@ export default function TemplatesGrid({
               const collapsed = !!collapsedById[template.id];
               const isEditing = editingId === template.id;
               const isRecentlyAdded = template.id === recentlyAddedId;
+              const isPinned = !!template.pinned;
 
-              // base card style – NO border/borderWidth/borderColor shorthands
+              // base card style – no border shorthands
               let cardStyle: React.CSSProperties = {
                 borderTopStyle: "solid",
                 borderBottomStyle: "solid",
@@ -152,6 +245,15 @@ export default function TemplatesGrid({
                   "box-shadow 0.25s ease, background-color 0.25s ease, border-color 0.25s ease",
               };
 
+              // pinned accent (orange top/bottom)
+              if (isPinned) {
+                cardStyle = {
+                  ...cardStyle,
+                  borderTopColor: "#f97316",
+                  borderBottomColor: "#f97316",
+                };
+              }
+
               // highlight newly added card
               if (isRecentlyAdded) {
                 cardStyle = {
@@ -181,7 +283,7 @@ export default function TemplatesGrid({
                     {/* left spacer */}
                     <div style={{ flex: 1 }} />
 
-                    {/* center: minimize / copy / edit */}
+                    {/* center: minimize / copy / edit / pin */}
                     <div
                       style={{
                         display: "flex",
@@ -256,6 +358,40 @@ export default function TemplatesGrid({
                           >
                             Edit
                           </button>
+
+                          {/* PIN / UNPIN */}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              isPinned
+                                ? onUnpin(template.id)
+                                : onPin(template.id)
+                            }
+                            style={{
+                              padding: "0.2rem 0.6rem",
+                              borderRadius: "999px",
+                              border: `1px solid ${
+                                isPinned
+                                  ? "#f97316"
+                                  : darkMode
+                                  ? "#4b5563"
+                                  : "#d1d5db"
+                              }`,
+                              backgroundColor: darkMode
+                                ? "#020617"
+                                : "white",
+                              color: isPinned
+                                ? "#ea580c"
+                                : darkMode
+                                ? "#e5e7eb"
+                                : "#111827",
+                              fontSize: "0.75rem",
+                              cursor: "pointer",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {isPinned ? "Unpin" : "Pin"}
+                          </button>
                         </>
                       )}
                     </div>
@@ -290,7 +426,7 @@ export default function TemplatesGrid({
                     </div>
                   </div>
 
-                  {/* TITLE */}
+                  {/* TITLE + PIN INDICATOR */}
                   {isEditing ? (
                     <input
                       type="text"
@@ -310,18 +446,37 @@ export default function TemplatesGrid({
                       }}
                     />
                   ) : (
-                    <h2
+                    <div
                       style={{
-                        fontSize: "0.95rem",
-                        fontWeight: 600,
-                        wordBreak: "break-word",
-                        margin: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.3rem",
                         marginTop: "0.15rem",
-                        color: cardTextColor,
                       }}
                     >
-                      {template.title}
-                    </h2>
+                      {isPinned && (
+                        <span
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "#f97316",
+                            fontWeight: 600,
+                          }}
+                        >
+                          📌 Pinned
+                        </span>
+                      )}
+                      <h2
+                        style={{
+                          fontSize: "0.95rem",
+                          fontWeight: 600,
+                          wordBreak: "break-word",
+                          margin: 0,
+                          color: cardTextColor,
+                        }}
+                      >
+                        {template.title}
+                      </h2>
+                    </div>
                   )}
 
                   {/* BODY / EDIT AREA */}

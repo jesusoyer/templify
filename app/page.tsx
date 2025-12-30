@@ -9,6 +9,8 @@ type Template = {
   id: string;
   title: string;
   body: string;
+  pinned?: boolean;
+  pinnedAt?: number | null;
 };
 
 export default function ClipboardTemplatesPage() {
@@ -25,10 +27,10 @@ export default function ClipboardTemplatesPage() {
   // Show/hide creator
   const [showCreator, setShowCreator] = useState(true);
 
-  // NEW: dark mode
+  // Dark mode
   const [darkMode, setDarkMode] = useState(false);
 
-  // NEW: track which template was just added
+  // Track which template was just added
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
   // Load from localStorage on first render
@@ -76,6 +78,8 @@ export default function ClipboardTemplatesPage() {
       id: Date.now().toString() + Math.random().toString(16),
       title: trimmedTitle,
       body: trimmedBody,
+      pinned: false,
+      pinnedAt: null,
     };
 
     setTemplates((prev) => [newTemplate, ...prev]);
@@ -147,6 +151,37 @@ export default function ClipboardTemplatesPage() {
     setEditingId(null);
     setEditingTitle("");
     setEditingBody("");
+  }
+
+  // 🔹 Pin / Unpin handlers
+  function handlePinTemplate(id: string) {
+    const now = Date.now();
+    setTemplates((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              pinned: true,
+              // only set pinnedAt once – if it already has one, keep it
+              pinnedAt: t.pinnedAt ?? now,
+            }
+          : t
+      )
+    );
+  }
+
+  function handleUnpinTemplate(id: string) {
+    setTemplates((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              pinned: false,
+              pinnedAt: null,
+            }
+          : t
+      )
+    );
   }
 
   const normalizedSearch = search.toLowerCase();
@@ -291,6 +326,8 @@ export default function ClipboardTemplatesPage() {
           onCancelEdit={handleCancelEdit}
           recentlyAddedId={recentlyAddedId}
           darkMode={darkMode}
+          onPin={handlePinTemplate}      // 👈 added
+          onUnpin={handleUnpinTemplate}  // 👈 added
         />
       </section>
     </main>
