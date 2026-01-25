@@ -10,6 +10,14 @@ It lets you create, organize, and reuse text snippets across different **boards*
 
 ---
 
+## Live Demo
+
+Templify is deployed on Vercel:
+
+👉 **https://templify-eta.vercel.app/**
+
+---
+
 ## Features
 
 - 🧩 **Boards**
