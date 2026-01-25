@@ -59,9 +59,7 @@ export default function ClipboardTemplatesPage() {
   // Assign-to-board modal
   const [showAssignBoardModal, setShowAssignBoardModal] = useState(false);
   const [assignBoardId, setAssignBoardId] = useState<string>("");
-  const [assignSource, setAssignSource] = useState<
-    "existing" | "new" | null
-  >(null);
+  const [assignSource, setAssignSource] = useState<"existing" | "new" | null>(null);
   const [assignTemplateId, setAssignTemplateId] = useState<string | null>(
     null
   );
@@ -625,7 +623,7 @@ export default function ClipboardTemplatesPage() {
             TEMPLIFY - A clipboard on Steroids!
           </h1>
 
-          {/* Board selector (still controls active board even if search is global) */}
+          {/* Board selector + inline delete button */}
           <div
             style={{
               display: "flex",
@@ -660,6 +658,26 @@ export default function ClipboardTemplatesPage() {
                 </option>
               ))}
             </select>
+
+            {/* Show delete button only for non-Home boards */}
+            {activeBoardId && activeBoardId !== HOME_BOARD_ID && (
+              <button
+                type="button"
+                onClick={handleRequestDeleteBoard}
+                style={{
+                  padding: "0.25rem 0.6rem",
+                  borderRadius: "999px",
+                  border: "1px solid #b91c1c",
+                  backgroundColor: darkMode ? "#111827" : "#fef2f2",
+                  color: "#b91c1c",
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
 
@@ -742,32 +760,16 @@ export default function ClipboardTemplatesPage() {
 
       {/* TEMPLATE CREATOR (can be hidden) */}
       {showCreator && (
-        <>
-          <TemplateCreator
-            title={title}
-            body={body}
-            onTitleChange={setTitle}
-            onBodyChange={setBody}
-            onSubmit={handleAddTemplateToActiveBoard} // save to current board
-            onAddToBoardClick={handleCreatorAddToBoardClick}
-            darkMode={darkMode}
-            currentBoardName={creatorBoardName}
-          />
-          {/* Small safety notice under the creator */}
-          <p
-            style={{
-              marginTop: "0.25rem",
-              fontSize: "0.75rem",
-              color: darkMode ? "#9ca3af" : "#6b7280",
-              maxWidth: "480px",
-            }}
-          >
-            Your templates are stored locally in this browser.
-            <br />
-            Please don&apos;t paste passwords, API keys, or highly sensitive
-            data.
-          </p>
-        </>
+        <TemplateCreator
+          title={title}
+          body={body}
+          onTitleChange={setTitle}
+          onBodyChange={setBody}
+          onSubmit={handleAddTemplateToActiveBoard}
+          onAddToBoardClick={handleCreatorAddToBoardClick}
+          darkMode={darkMode}
+          currentBoardName={creatorBoardName}
+        />
       )}
 
       {/* SEARCH BAR */}
@@ -824,75 +826,67 @@ export default function ClipboardTemplatesPage() {
             justifyContent: "center",
             zIndex: 60,
           }}
+          onClick={handleCancelCreateBoard}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
-              backgroundColor: darkMode ? "#020617" : "white",
-              padding: "1.25rem 1.5rem",
-              borderRadius: "10px",
-              minWidth: "280px",
-              maxWidth: "90vw",
-              boxShadow:
-                "0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5)",
-              border: darkMode ? "1px solid #4b5563" : "none",
+              backgroundColor: darkMode ? "#1f2937" : "white",
+              padding: "2rem",
+              borderRadius: "0.5rem",
+              maxWidth: "28rem",
+              width: "90%",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
             }}
           >
-            <h3
+            <h2
               style={{
-                margin: 0,
-                marginBottom: "0.5rem",
-                fontSize: "1rem",
-                fontWeight: 600,
-                color: darkMode ? "#e5e7eb" : "#111827",
+                fontSize: "1.5rem",
+                fontWeight: "bold",
+                marginBottom: "1rem",
+                color: mainText,
               }}
             >
-              Create custom board
-            </h3>
-            <p
-              style={{
-                margin: 0,
-                marginBottom: "0.75rem",
-                fontSize: "0.9rem",
-                color: darkMode ? "#9ca3af" : "#4b5563",
-              }}
-            >
-              What is the name of your custom board?
-            </p>
+              Create New Board
+            </h2>
             <input
               type="text"
+              placeholder="Board name"
               value={newBoardName}
               onChange={(e) => setNewBoardName(e.target.value)}
-              placeholder="e.g. Sales replies, Support snippets..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleCreateBoard();
+                }
+              }}
               style={{
                 width: "100%",
-                padding: "0.5rem 0.75rem",
-                borderRadius: "6px",
-                border: "1px solid #9ca3af",
-                backgroundColor: darkMode ? "#020617" : "white",
-                color: darkMode ? "#e5e7eb" : "#111827",
-                marginBottom: "0.75rem",
+                padding: "0.5rem",
+                borderRadius: "0.375rem",
+                border: "1px solid #d1d5db",
+                backgroundColor: darkMode ? "#374151" : "white",
+                color: mainText,
+                marginBottom: "1rem",
               }}
             />
             <div
               style={{
                 display: "flex",
+                gap: "0.75rem",
                 justifyContent: "flex-end",
-                gap: "0.5rem",
               }}
             >
               <button
                 type="button"
                 onClick={handleCancelCreateBoard}
                 style={{
-                  padding: "0.35rem 0.8rem",
-                  borderRadius: "6px",
-                  border: `1px solid ${
-                    darkMode ? "#4b5563" : "#d1d5db"
-                  }`,
-                  backgroundColor: darkMode ? "#020617" : "white",
-                  color: darkMode ? "#e5e7eb" : "#111827",
-                  fontSize: "0.85rem",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "0.375rem",
+                  border: "1px solid #d1d5db",
+                  backgroundColor: darkMode ? "#374151" : "#f9fafb",
+                  color: mainText,
                   cursor: "pointer",
+                  fontWeight: 500,
                 }}
               >
                 Cancel
@@ -901,12 +895,11 @@ export default function ClipboardTemplatesPage() {
                 type="button"
                 onClick={handleCreateBoard}
                 style={{
-                  padding: "0.35rem 0.8rem",
-                  borderRadius: "6px",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "0.375rem",
                   border: "none",
-                  backgroundColor: "#2563eb",
+                  backgroundColor: "#3b82f6",
                   color: "white",
-                  fontSize: "0.85rem",
                   cursor: "pointer",
                   fontWeight: 500,
                 }}
@@ -930,55 +923,51 @@ export default function ClipboardTemplatesPage() {
             justifyContent: "center",
             zIndex: 60,
           }}
+          onClick={handleCancelAssignBoard}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
-              backgroundColor: darkMode ? "#020617" : "white",
-              padding: "1.25rem 1.5rem",
-              borderRadius: "10px",
-              minWidth: "280px",
-              maxWidth: "90vw",
-              boxShadow:
-                "0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5)",
-              border: darkMode ? "1px solid #4b5563" : "none",
+              backgroundColor: darkMode ? "#1f2937" : "white",
+              padding: "2rem",
+              borderRadius: "0.5rem",
+              maxWidth: "28rem",
+              width: "90%",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
             }}
           >
-            <h3
+            <h2
               style={{
-                margin: 0,
-                marginBottom: "0.5rem",
-                fontSize: "1rem",
-                fontWeight: 600,
-                color: darkMode ? "#e5e7eb" : "#111827",
+                fontSize: "1.5rem",
+                fontWeight: "bold",
+                marginBottom: "1rem",
+                color: mainText,
               }}
             >
-              {assignSource === "existing"
-                ? "Add template to board"
-                : "Save template to board"}
-            </h3>
-            <p
-              style={{
-                margin: 0,
-                marginBottom: "0.75rem",
-                fontSize: "0.9rem",
-                color: darkMode ? "#9ca3af" : "#4b5563",
-              }}
-            >
-              Choose a board, or create a new one and use it right away.
-            </p>
+              Assign to Board
+            </h2>
 
-            {/* existing boards dropdown */}
+            <label
+              style={{
+                display: "block",
+                marginBottom: "0.5rem",
+                fontSize: "0.9rem",
+                color: darkMode ? "#d1d5db" : "#4b5563",
+              }}
+            >
+              Select a board:
+            </label>
             <select
               value={assignBoardId}
               onChange={(e) => setAssignBoardId(e.target.value)}
               style={{
                 width: "100%",
-                padding: "0.45rem 0.7rem",
-                borderRadius: "6px",
-                border: "1px solid #9ca3af",
-                backgroundColor: darkMode ? "#020617" : "white",
-                color: darkMode ? "#e5e7eb" : "#111827",
-                marginBottom: "0.75rem",
+                padding: "0.5rem",
+                borderRadius: "0.375rem",
+                border: "1px solid #d1d5db",
+                backgroundColor: darkMode ? "#374151" : "white",
+                color: mainText,
+                marginBottom: "1rem",
               }}
             >
               {boards.map((b) => (
@@ -988,84 +977,81 @@ export default function ClipboardTemplatesPage() {
               ))}
             </select>
 
-            {/* Inline create-new-board + use it */}
             <div
               style={{
-                marginBottom: "0.75rem",
+                marginBottom: "1rem",
+                padding: "0.75rem",
+                backgroundColor: darkMode ? "#374151" : "#f9fafb",
+                borderRadius: "0.375rem",
+                border: "1px solid #d1d5db",
               }}
             >
-              <p
+              <label
                 style={{
-                  margin: 0,
-                  marginBottom: "0.35rem",
+                  display: "block",
+                  marginBottom: "0.5rem",
                   fontSize: "0.85rem",
-                  color: darkMode ? "#9ca3af" : "#6b7280",
+                  color: darkMode ? "#d1d5db" : "#4b5563",
                 }}
               >
-                Or create a new board and assign this template to it:
-              </p>
-              <div
+                Or create a new board:
+              </label>
+              <input
+                type="text"
+                placeholder="New board name"
+                value={assignNewBoardName}
+                onChange={(e) => setAssignNewBoardName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleCreateBoardFromAssign();
+                  }
+                }}
                 style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  flexWrap: "wrap",
+                  width: "100%",
+                  padding: "0.4rem",
+                  borderRadius: "0.375rem",
+                  border: "1px solid #d1d5db",
+                  backgroundColor: darkMode ? "#1f2937" : "white",
+                  color: mainText,
+                  marginBottom: "0.5rem",
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleCreateBoardFromAssign}
+                style={{
+                  padding: "0.4rem 0.8rem",
+                  borderRadius: "0.375rem",
+                  border: "none",
+                  backgroundColor: "#10b981",
+                  color: "white",
+                  cursor: "pointer",
+                  fontSize: "0.85rem",
+                  fontWeight: 500,
                 }}
               >
-                <input
-                  type="text"
-                  value={assignNewBoardName}
-                  onChange={(e) => setAssignNewBoardName(e.target.value)}
-                  placeholder="New board name"
-                  style={{
-                    flex: 1,
-                    minWidth: "140px",
-                    padding: "0.4rem 0.6rem",
-                    borderRadius: "6px",
-                    border: "1px solid #9ca3af",
-                    backgroundColor: darkMode ? "#020617" : "white",
-                    color: darkMode ? "#e5e7eb" : "#111827",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleCreateBoardFromAssign}
-                  style={{
-                    padding: "0.4rem 0.8rem",
-                    borderRadius: "6px",
-                    border: "none",
-                    backgroundColor: "#2563eb",
-                    color: "white",
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    fontWeight: 500,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Create &amp; use
-                </button>
-              </div>
+                Create & Use
+              </button>
             </div>
 
             <div
               style={{
                 display: "flex",
+                gap: "0.75rem",
                 justifyContent: "flex-end",
-                gap: "0.5rem",
               }}
             >
               <button
                 type="button"
                 onClick={handleCancelAssignBoard}
                 style={{
-                  padding: "0.35rem 0.8rem",
-                  borderRadius: "6px",
-                  border: `1px solid ${
-                    darkMode ? "#4b5563" : "#d1d5db"
-                  }`,
-                  backgroundColor: darkMode ? "#020617" : "white",
-                  color: darkMode ? "#e5e7eb" : "#111827",
-                  fontSize: "0.85rem",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "0.375rem",
+                  border: "1px solid #d1d5db",
+                  backgroundColor: darkMode ? "#374151" : "#f9fafb",
+                  color: mainText,
                   cursor: "pointer",
+                  fontWeight: 500,
                 }}
               >
                 Cancel
@@ -1074,12 +1060,11 @@ export default function ClipboardTemplatesPage() {
                 type="button"
                 onClick={handleConfirmAssignBoard}
                 style={{
-                  padding: "0.35rem 0.8rem",
-                  borderRadius: "6px",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "0.375rem",
                   border: "none",
-                  backgroundColor: "#2563eb",
+                  backgroundColor: "#3b82f6",
                   color: "white",
-                  fontSize: "0.85rem",
                   cursor: "pointer",
                   fontWeight: 500,
                 }}
@@ -1103,62 +1088,57 @@ export default function ClipboardTemplatesPage() {
             justifyContent: "center",
             zIndex: 70,
           }}
+          onClick={handleCancelDeleteBoard}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
-              backgroundColor: darkMode ? "#020617" : "white",
-              padding: "1.25rem 1.5rem",
-              borderRadius: "10px",
-              minWidth: "280px",
-              maxWidth: "90vw",
-              boxShadow:
-                "0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5)",
-              border: darkMode ? "1px solid #4b5563" : "none",
+              backgroundColor: darkMode ? "#1f2937" : "white",
+              padding: "2rem",
+              borderRadius: "0.5rem",
+              maxWidth: "28rem",
+              width: "90%",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
             }}
           >
-            <h3
+            <h2
               style={{
-                margin: 0,
-                marginBottom: "0.5rem",
-                fontSize: "1rem",
-                fontWeight: 600,
-                color: darkMode ? "#e5e7eb" : "#111827",
+                fontSize: "1.5rem",
+                fontWeight: "bold",
+                marginBottom: "1rem",
+                color: mainText,
               }}
             >
-              Delete board?
-            </h3>
+              Delete Board?
+            </h2>
             <p
               style={{
-                margin: 0,
-                marginBottom: "0.75rem",
-                fontSize: "0.9rem",
-                color: darkMode ? "#9ca3af" : "#4b5563",
+                marginBottom: "1.5rem",
+                color: darkMode ? "#d1d5db" : "#4b5563",
               }}
             >
               Are you sure you want to delete the board{" "}
-              <strong>{boardToDeleteName}</strong> and all templates in it?
-              This cannot be undone.
+              <strong>"{boardToDeleteName}"</strong>? This will also delete all
+              templates in this board. This action cannot be undone.
             </p>
             <div
               style={{
                 display: "flex",
+                gap: "0.75rem",
                 justifyContent: "flex-end",
-                gap: "0.5rem",
               }}
             >
               <button
                 type="button"
                 onClick={handleCancelDeleteBoard}
                 style={{
-                  padding: "0.35rem 0.8rem",
-                  borderRadius: "6px",
-                  border: `1px solid ${
-                    darkMode ? "#4b5563" : "#d1d5db"
-                  }`,
-                  backgroundColor: darkMode ? "#020617" : "white",
-                  color: darkMode ? "#e5e7eb" : "#111827",
-                  fontSize: "0.85rem",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "0.375rem",
+                  border: "1px solid #d1d5db",
+                  backgroundColor: darkMode ? "#374151" : "#f9fafb",
+                  color: mainText,
                   cursor: "pointer",
+                  fontWeight: 500,
                 }}
               >
                 Cancel
@@ -1167,17 +1147,16 @@ export default function ClipboardTemplatesPage() {
                 type="button"
                 onClick={handleConfirmDeleteBoard}
                 style={{
-                  padding: "0.35rem 0.8rem",
-                  borderRadius: "6px",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "0.375rem",
                   border: "none",
-                  backgroundColor: "#b91c1c",
+                  backgroundColor: "#dc2626",
                   color: "white",
-                  fontSize: "0.85rem",
                   cursor: "pointer",
                   fontWeight: 500,
                 }}
               >
-                Delete board
+                Delete Board
               </button>
             </div>
           </div>
