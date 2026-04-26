@@ -5,10 +5,11 @@ type TemplateCreatorProps = {
   body: string;
   onTitleChange: (value: string) => void;
   onBodyChange: (value: string) => void;
-  onSubmit: (e: React.FormEvent) => void; // Save to current board
-  onAddToBoardClick: () => void;          // Open board modal
+  onSubmit: (e: React.FormEvent) => void;
+  onAddToBoardClick: () => void;
   darkMode: boolean;
   currentBoardName: string;
+  onHide: () => void; // closes the creator
 };
 
 export default function TemplateCreator({
@@ -20,6 +21,7 @@ export default function TemplateCreator({
   onAddToBoardClick,
   darkMode,
   currentBoardName,
+  onHide,
 }: TemplateCreatorProps) {
   const cardBg = darkMode ? "#020617" : "white";
   const borderBase = darkMode ? "#1d4ed8" : "#bfdbfe";
@@ -42,58 +44,66 @@ export default function TemplateCreator({
       style={{
         width: "100%",
         padding: "1rem",
-
-        // explicit border, no shorthand
         borderTopStyle: "solid",
         borderBottomStyle: "solid",
         borderLeftStyle: "solid",
         borderRightStyle: "solid",
-
         borderTopWidth: "3px",
         borderBottomWidth: "3px",
         borderLeftWidth: "1px",
         borderRightWidth: "1px",
-
         borderTopColor: accent,
         borderBottomColor: accent,
         borderLeftColor: borderBase,
         borderRightColor: borderBase,
-
         borderRadius: "10px",
         backgroundColor: cardBg,
         boxShadow: "0 6px 16px rgba(15, 23, 42, 0.18)",
+        position: "relative",
       }}
     >
-      <h2
+      {/* Header row: title + Hide Creator button */}
+      <div
         style={{
-          fontSize: "1.1rem",
-          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
           marginBottom: "0.75rem",
-          marginTop: 0,
-          color: textColor,
         }}
       >
-        Create New Template
-      </h2>
-
-      <form
-        onSubmit={onSubmit}
-        style={{
-          display: "grid",
-          gap: "0.75rem",
-        }}
-      >
-        <div
+        <h2
           style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.25rem",
+            fontSize: "1.1rem",
+            fontWeight: 600,
+            margin: 0,
+            color: textColor,
           }}
         >
-          <label
-            htmlFor="title"
-            style={{ fontWeight: 500, color: textColor }}
-          >
+          Create New Template
+        </h2>
+
+        <button
+          type="button"
+          onClick={onHide}
+          style={{
+            padding: "0.25rem 0.75rem",
+            borderRadius: "999px",
+            border: "1px solid #fca5a5",
+            backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5",
+            color: darkMode ? "#fca5a5" : "#dc2626",
+            fontSize: "0.78rem",
+            fontWeight: 500,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          ✕ Close Creator
+        </button>
+      </div>
+
+      <form onSubmit={onSubmit} style={{ display: "grid", gap: "0.75rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <label htmlFor="title" style={{ fontWeight: 500, color: textColor }}>
             Title
           </label>
           <input
@@ -112,17 +122,8 @@ export default function TemplateCreator({
           />
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.25rem",
-          }}
-        >
-          <label
-            htmlFor="body"
-            style={{ fontWeight: 500, color: textColor }}
-          >
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <label htmlFor="body" style={{ fontWeight: 500, color: textColor }}>
             Template body
           </label>
           <textarea
@@ -143,13 +144,7 @@ export default function TemplateCreator({
         </div>
 
         {/* Buttons row */}
-        <div
-          style={{
-            display: "flex",
-            gap: "0.5rem",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           <button
             type="submit"
             style={{

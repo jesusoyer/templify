@@ -491,7 +491,6 @@ export default function ClipboardTemplatesPage() {
             TEMPLIFY - A clipboard on Steroids!
           </h1>
 
-          {/* Board selector */}
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
             <span style={{ fontSize: "0.9rem", color: darkMode ? "#9ca3af" : "#4b5563" }}>
               Board:
@@ -534,7 +533,6 @@ export default function ClipboardTemplatesPage() {
           </div>
         </div>
 
-        {/* Right-side: only Dark mode toggle remains */}
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <button
             type="button"
@@ -555,7 +553,7 @@ export default function ClipboardTemplatesPage() {
         </div>
       </div>
 
-      {/* SEARCH BAR — owns Create Board + New Template buttons */}
+      {/* SEARCH BAR */}
       <SearchBar
         search={search}
         onSearchChange={setSearch}
@@ -568,7 +566,7 @@ export default function ClipboardTemplatesPage() {
         onCreateBoard={handleOpenCreateBoardModal}
       />
 
-      {/* TEMPLATE CREATOR — hidden by default */}
+      {/* TEMPLATE CREATOR — onHide added here */}
       {showCreator && (
         <TemplateCreator
           title={title}
@@ -579,6 +577,7 @@ export default function ClipboardTemplatesPage() {
           onAddToBoardClick={handleCreatorAddToBoardClick}
           darkMode={darkMode}
           currentBoardName={creatorBoardName}
+          onHide={() => setShowCreator(false)}
         />
       )}
 
