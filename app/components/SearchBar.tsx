@@ -12,11 +12,17 @@ type SearchBarProps = {
 
   // Search scope
   boards: Board[];
-  searchScopeBoardId: string; // "all" or a board.id
+  searchScopeBoardId: string;
   onSearchScopeChange: (boardId: string) => void;
+
+  // Creator toggle
+  showCreator: boolean;
+  onToggleCreator: () => void;
+
+  // Create board
+  onCreateBoard: () => void;
 };
 
-// Robust copy: Clipboard API + textarea fallback
 function copyToClipboardSafe(text: string) {
   if (typeof window === "undefined") return;
   if (navigator && "clipboard" in navigator && navigator.clipboard?.writeText) {
@@ -49,6 +55,9 @@ export default function SearchBar({
   boards,
   searchScopeBoardId,
   onSearchScopeChange,
+  showCreator,
+  onToggleCreator,
+  onCreateBoard,
 }: SearchBarProps) {
   const [autoCaps, setAutoCaps] = useState(false);
   const [trimTo100, setTrimTo100] = useState(false);
@@ -90,7 +99,6 @@ export default function SearchBar({
     else setCopied(false);
   }
 
-  // Re-apply transforms to existing text when a toggle changes
   function handleAutoCapsToggle(checked: boolean) {
     setAutoCaps(checked);
     if (search) {
@@ -154,7 +162,7 @@ export default function SearchBar({
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
 
-        {/* Label + Copied badge + Clear button */}
+        {/* Top row: label + copied badge + action buttons */}
         <div
           style={{
             display: "flex",
@@ -188,24 +196,70 @@ export default function SearchBar({
             )}
           </div>
 
-          {search.trim().length > 0 && (
+          {/* Right side: Clear + Create Board + New Template */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            {search.trim().length > 0 && (
+              <button
+                type="button"
+                onClick={handleClear}
+                style={{
+                  padding: "0.35rem 0.9rem",
+                  borderRadius: "999px",
+                  border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`,
+                  backgroundColor: darkMode ? "#020617" : "white",
+                  color: textColor,
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Clear
+              </button>
+            )}
+
+            {/* Create Board — same blue style as the original header button */}
             <button
               type="button"
-              onClick={handleClear}
+              onClick={onCreateBoard}
               style={{
                 padding: "0.35rem 0.9rem",
                 borderRadius: "999px",
-                border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`,
-                backgroundColor: darkMode ? "#020617" : "white",
-                color: textColor,
+                border: "1px solid #3b82f6",
+                backgroundColor: darkMode ? "#020617" : "#eff6ff",
+                color: darkMode ? "#bfdbfe" : "#1d4ed8",
                 fontSize: "0.8rem",
                 cursor: "pointer",
+                fontWeight: 500,
                 whiteSpace: "nowrap",
               }}
             >
-              Clear Search Bar
+              + Create Board
             </button>
-          )}
+
+            {/* New Template toggle */}
+            <button
+              type="button"
+              onClick={onToggleCreator}
+              style={{
+                padding: "0.35rem 0.9rem",
+                borderRadius: "999px",
+                border: `1px solid ${showCreator ? accent : darkMode ? "#4b5563" : "#d1d5db"}`,
+                backgroundColor: showCreator
+                  ? darkMode ? "#1e3a5f" : "#eff6ff"
+                  : darkMode ? "#020617" : "white",
+                color: showCreator
+                  ? darkMode ? "#93c5fd" : "#1d4ed8"
+                  : textColor,
+                fontSize: "0.8rem",
+                fontWeight: 500,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {showCreator ? "✕ Close Creator" : "+ New Template"}
+            </button>
+          </div>
         </div>
 
         {/* Search input */}
@@ -262,7 +316,6 @@ export default function SearchBar({
             )}
           </label>
 
-          {/* Live char count — only visible when Trim to 100 is on */}
           {trimTo100 && search.length > 0 && (
             <span
               style={{

@@ -32,25 +32,22 @@ export default function ClipboardTemplatesPage() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
 
-  // Search scope: "all" or a specific board.id
-  const [searchScopeBoardId, setSearchScopeBoardId] =
-    useState<string>("all");
+  // Search scope
+  const [searchScopeBoardId, setSearchScopeBoardId] = useState<string>("all");
 
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [editingBody, setEditingBody] = useState("");
 
-  // Show/hide creator
-  const [showCreator, setShowCreator] = useState(true);
+  // Creator — hidden by default, toggled from SearchBar
+  const [showCreator, setShowCreator] = useState(false);
 
   // Dark mode
   const [darkMode, setDarkMode] = useState(false);
 
-  // Which template was just added (for highlight)
-  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(
-    null
-  );
+  // Recently added highlight
+  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
   // Create-board modal
   const [showCreateBoardModal, setShowCreateBoardModal] = useState(false);
@@ -60,25 +57,17 @@ export default function ClipboardTemplatesPage() {
   const [showAssignBoardModal, setShowAssignBoardModal] = useState(false);
   const [assignBoardId, setAssignBoardId] = useState<string>("");
   const [assignSource, setAssignSource] = useState<"existing" | "new" | null>(null);
-  const [assignTemplateId, setAssignTemplateId] = useState<string | null>(
-    null
-  );
-  const [pendingNewTemplateTitle, setPendingNewTemplateTitle] =
-    useState<string>("");
-  const [pendingNewTemplateBody, setPendingNewTemplateBody] =
-    useState<string>("");
-
-  // inline "create board" from assign modal
+  const [assignTemplateId, setAssignTemplateId] = useState<string | null>(null);
+  const [pendingNewTemplateTitle, setPendingNewTemplateTitle] = useState<string>("");
+  const [pendingNewTemplateBody, setPendingNewTemplateBody] = useState<string>("");
   const [assignNewBoardName, setAssignNewBoardName] = useState("");
 
-  // delete-board modal
+  // Delete-board modal
   const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
-  const [boardToDeleteId, setBoardToDeleteId] = useState<string | null>(
-    null
-  );
+  const [boardToDeleteId, setBoardToDeleteId] = useState<string | null>(null);
   const [boardToDeleteName, setBoardToDeleteName] = useState<string>("");
 
-  // Load templates from localStorage (and migrate to Home board if needed)
+  // Load templates from localStorage
   useEffect(() => {
     try {
       const stored = localStorage.getItem("clipboard-templates");
@@ -103,8 +92,7 @@ export default function ClipboardTemplatesPage() {
         const parsed = JSON.parse(storedBoards) as Board[];
         if (parsed.length > 0) {
           setBoards(parsed);
-          const storedActive =
-            localStorage.getItem("clipboard-active-board");
+          const storedActive = localStorage.getItem("clipboard-active-board");
           if (storedActive && parsed.some((b) => b.id === storedActive)) {
             setActiveBoardId(storedActive);
           } else {
@@ -113,28 +101,18 @@ export default function ClipboardTemplatesPage() {
           return;
         }
       }
-
-      // If no boards stored, create Home board
-      const homeBoard: Board = {
-        id: HOME_BOARD_ID,
-        name: "Home",
-        isDefault: true,
-      };
+      const homeBoard: Board = { id: HOME_BOARD_ID, name: "Home", isDefault: true };
       setBoards([homeBoard]);
       setActiveBoardId(HOME_BOARD_ID);
     } catch (err) {
       console.error("Failed to load boards from localStorage", err);
-      const homeBoard: Board = {
-        id: HOME_BOARD_ID,
-        name: "Home",
-        isDefault: true,
-      };
+      const homeBoard: Board = { id: HOME_BOARD_ID, name: "Home", isDefault: true };
       setBoards([homeBoard]);
       setActiveBoardId(HOME_BOARD_ID);
     }
   }, []);
 
-  // Save templates to localStorage whenever they change
+  // Save templates to localStorage
   useEffect(() => {
     try {
       localStorage.setItem("clipboard-templates", JSON.stringify(templates));
@@ -162,12 +140,10 @@ export default function ClipboardTemplatesPage() {
     }
   }, [activeBoardId]);
 
-  // Clear the highlight after ~1s
+  // Clear highlight after ~1s
   useEffect(() => {
     if (!recentlyAddedId) return;
-    const timeout = setTimeout(() => {
-      setRecentlyAddedId(null);
-    }, 1000);
+    const timeout = setTimeout(() => setRecentlyAddedId(null), 1000);
     return () => clearTimeout(timeout);
   }, [recentlyAddedId]);
 
@@ -175,17 +151,13 @@ export default function ClipboardTemplatesPage() {
 
   function handleAddTemplateToActiveBoard(e: React.FormEvent) {
     e.preventDefault();
-
     const trimmedTitle = title.trim();
     const trimmedBody = body.trim();
-
     if (!trimmedTitle || !trimmedBody) {
       alert("Title and body are required.");
       return;
     }
-
     const targetBoardId = activeBoardId || HOME_BOARD_ID;
-
     const newTemplate: Template = {
       id: Date.now().toString() + Math.random().toString(16),
       title: trimmedTitle,
@@ -194,41 +166,35 @@ export default function ClipboardTemplatesPage() {
       pinnedAt: null,
       boardId: targetBoardId,
     };
-
     setTemplates((prev) => [newTemplate, ...prev]);
     setTitle("");
     setBody("");
     setRecentlyAddedId(newTemplate.id);
+    setShowCreator(false);
   }
 
   function handleCreatorAddToBoardClick() {
     const trimmedTitle = title.trim();
     const trimmedBody = body.trim();
-
     if (!trimmedTitle || !trimmedBody) {
       alert("Title and body are required before adding to a board.");
       return;
     }
-
     if (!boards.length) {
       alert("Please create a board first.");
       return;
     }
-
     setPendingNewTemplateTitle(trimmedTitle);
     setPendingNewTemplateBody(trimmedBody);
     setAssignSource("new");
     setAssignTemplateId(null);
-
-    const defaultBoardId =
-      activeBoardId || boards[0]?.id || HOME_BOARD_ID;
+    const defaultBoardId = activeBoardId || boards[0]?.id || HOME_BOARD_ID;
     setAssignBoardId(defaultBoardId);
     setShowAssignBoardModal(true);
   }
 
   function handleDeleteTemplate(id: string) {
     setTemplates((prev) => prev.filter((t) => t.id !== id));
-
     if (editingId === id) {
       setEditingId(null);
       setEditingTitle("");
@@ -262,18 +228,15 @@ export default function ClipboardTemplatesPage() {
   function handleSaveEdit(id: string) {
     const trimmedTitle = editingTitle.trim();
     const trimmedBody = editingBody.trim();
-
     if (!trimmedTitle || !trimmedBody) {
       alert("Title and body are required.");
       return;
     }
-
     setTemplates((prev) =>
       prev.map((t) =>
         t.id === id ? { ...t, title: trimmedTitle, body: trimmedBody } : t
       )
     );
-
     setEditingId(null);
     setEditingTitle("");
     setEditingBody("");
@@ -291,9 +254,7 @@ export default function ClipboardTemplatesPage() {
     const now = Date.now();
     setTemplates((prev) =>
       prev.map((t) =>
-        t.id === id
-          ? { ...t, pinned: true, pinnedAt: t.pinnedAt ?? now }
-          : t
+        t.id === id ? { ...t, pinned: true, pinnedAt: t.pinnedAt ?? now } : t
       )
     );
   }
@@ -306,7 +267,7 @@ export default function ClipboardTemplatesPage() {
     );
   }
 
-  // ---------- Boards (standalone create) ----------
+  // ---------- Boards ----------
 
   function handleCreateBoard() {
     const trimmed = newBoardName.trim();
@@ -314,14 +275,9 @@ export default function ClipboardTemplatesPage() {
       alert("Board name is required.");
       return;
     }
-
     const id =
-      trimmed.toLowerCase().replace(/\s+/g, "-") +
-      "-" +
-      Date.now().toString(36);
-
+      trimmed.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now().toString(36);
     const newBoard: Board = { id, name: trimmed, isDefault: false };
-
     setBoards((prev) => [...prev, newBoard]);
     setActiveBoardId(newBoard.id);
     setNewBoardName("");
@@ -338,18 +294,16 @@ export default function ClipboardTemplatesPage() {
     setShowCreateBoardModal(false);
   }
 
-  // ---------- Assign template to board ----------
+  // ---------- Assign to board ----------
 
   function handleRequestAssignBoard(templateId: string) {
     if (!boards.length) {
       alert("Please create a board first.");
       return;
     }
-
     const template = templates.find((t) => t.id === templateId);
     const defaultBoardId =
       template?.boardId || activeBoardId || boards[0]?.id || HOME_BOARD_ID;
-
     setAssignSource("existing");
     setAssignTemplateId(templateId);
     setAssignBoardId(defaultBoardId);
@@ -361,7 +315,6 @@ export default function ClipboardTemplatesPage() {
       alert("Please choose a board.");
       return;
     }
-
     if (assignSource === "existing" && assignTemplateId) {
       setTemplates((prev) =>
         prev.map((t) =>
@@ -371,12 +324,10 @@ export default function ClipboardTemplatesPage() {
     } else if (assignSource === "new") {
       const trimmedTitle = pendingNewTemplateTitle.trim();
       const trimmedBody = pendingNewTemplateBody.trim();
-
       if (!trimmedTitle || !trimmedBody) {
         alert("Title and body are required.");
         return;
       }
-
       const newTemplate: Template = {
         id: Date.now().toString() + Math.random().toString(16),
         title: trimmedTitle,
@@ -385,13 +336,11 @@ export default function ClipboardTemplatesPage() {
         pinnedAt: null,
         boardId,
       };
-
       setTemplates((prev) => [newTemplate, ...prev]);
       setTitle("");
       setBody("");
       setRecentlyAddedId(newTemplate.id);
     }
-
     setShowAssignBoardModal(false);
     setAssignBoardId("");
     setAssignTemplateId(null);
@@ -399,6 +348,7 @@ export default function ClipboardTemplatesPage() {
     setPendingNewTemplateTitle("");
     setPendingNewTemplateBody("");
     setAssignNewBoardName("");
+    setShowCreator(false);
   }
 
   function handleConfirmAssignBoard() {
@@ -421,19 +371,13 @@ export default function ClipboardTemplatesPage() {
       alert("Board name is required.");
       return;
     }
-
     const id =
-      trimmed.toLowerCase().replace(/\s+/g, "-") +
-      "-" +
-      Date.now().toString(36);
-
+      trimmed.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now().toString(36);
     const newBoard: Board = { id, name: trimmed, isDefault: false };
-
     setBoards((prev) => [...prev, newBoard]);
     setActiveBoardId(newBoard.id);
     setAssignBoardId(id);
     setAssignNewBoardName("");
-
     performAssignToBoard(id);
   }
 
@@ -441,7 +385,6 @@ export default function ClipboardTemplatesPage() {
 
   function handleRequestDeleteBoard() {
     if (!activeBoardId || activeBoardId === HOME_BOARD_ID) return;
-
     const board = boards.find((b) => b.id === activeBoardId);
     setBoardToDeleteId(activeBoardId);
     setBoardToDeleteName(board?.name || "this board");
@@ -449,32 +392,19 @@ export default function ClipboardTemplatesPage() {
   }
 
   function handleConfirmDeleteBoard() {
-    if (!boardToDeleteId) {
-      setShowDeleteBoardModal(false);
-      return;
-    }
-    if (boardToDeleteId === HOME_BOARD_ID) {
-      setShowDeleteBoardModal(false);
-      return;
-    }
-
+    if (!boardToDeleteId) { setShowDeleteBoardModal(false); return; }
+    if (boardToDeleteId === HOME_BOARD_ID) { setShowDeleteBoardModal(false); return; }
     setBoards((prevBoards) => {
       const updated = prevBoards.filter((b) => b.id !== boardToDeleteId);
-
       setActiveBoardId((prevActive) => {
         if (prevActive && prevActive !== boardToDeleteId) return prevActive;
         const home = updated.find((b) => b.id === HOME_BOARD_ID);
         if (home) return home.id;
         return updated[0]?.id ?? null;
       });
-
       return updated;
     });
-
-    setTemplates((prev) =>
-      prev.filter((t) => t.boardId !== boardToDeleteId)
-    );
-
+    setTemplates((prev) => prev.filter((t) => t.boardId !== boardToDeleteId));
     setShowDeleteBoardModal(false);
     setBoardToDeleteId(null);
     setBoardToDeleteName("");
@@ -489,7 +419,6 @@ export default function ClipboardTemplatesPage() {
   // ---------- Filtering ----------
 
   const normalizedSearch = search.toLowerCase().trim();
-
   const baseActiveBoardTemplates = templates.filter((t) =>
     activeBoardId ? t.boardId === activeBoardId : true
   );
@@ -511,8 +440,7 @@ export default function ClipboardTemplatesPage() {
           t.title.toLowerCase().includes(normalizedSearch)
       );
       const scopeBoardName =
-        boards.find((b) => b.id === searchScopeBoardId)?.name ||
-        "Selected board";
+        boards.find((b) => b.id === searchScopeBoardId)?.name || "Selected board";
       gridBoardName = `Search: "${search}" (${scopeBoardName})`;
     }
     gridCanDeleteBoard = false;
@@ -522,8 +450,7 @@ export default function ClipboardTemplatesPage() {
       boards.find((b) => b.id === activeBoardId)?.name ??
       boards.find((b) => b.id === HOME_BOARD_ID)?.name ??
       "Home";
-    gridCanDeleteBoard =
-      !!activeBoardId && activeBoardId !== HOME_BOARD_ID;
+    gridCanDeleteBoard = !!activeBoardId && activeBoardId !== HOME_BOARD_ID;
   }
 
   const creatorBoardName =
@@ -549,7 +476,7 @@ export default function ClipboardTemplatesPage() {
         color: mainText,
       }}
     >
-      {/* HEADER + BOARD CONTROLS + TOGGLES */}
+      {/* HEADER + BOARD CONTROLS */}
       <div
         style={{
           display: "flex",
@@ -559,38 +486,14 @@ export default function ClipboardTemplatesPage() {
           flexWrap: "wrap",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.35rem",
-          }}
-        >
-          <h1
-            style={{
-              fontSize: "2rem",
-              fontWeight: "bold",
-              margin: 0,
-              color: mainText,
-            }}
-          >
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+          <h1 style={{ fontSize: "2rem", fontWeight: "bold", margin: 0, color: mainText }}>
             TEMPLIFY - A clipboard on Steroids!
           </h1>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              flexWrap: "wrap",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.9rem",
-                color: darkMode ? "#9ca3af" : "#4b5563",
-              }}
-            >
+          {/* Board selector */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "0.9rem", color: darkMode ? "#9ca3af" : "#4b5563" }}>
               Board:
             </span>
             <select
@@ -606,9 +509,7 @@ export default function ClipboardTemplatesPage() {
               }}
             >
               {boards.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
+                <option key={b.id} value={b.id}>{b.name}</option>
               ))}
             </select>
 
@@ -633,32 +534,8 @@ export default function ClipboardTemplatesPage() {
           </div>
         </div>
 
-        {/* Right-side controls */}
-        <div
-          style={{
-            display: "flex",
-            gap: "0.5rem",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            type="button"
-            onClick={handleOpenCreateBoardModal}
-            style={{
-              padding: "0.4rem 0.8rem",
-              borderRadius: "999px",
-              border: "1px solid #3b82f6",
-              backgroundColor: darkMode ? "#020617" : "#eff6ff",
-              color: darkMode ? "#bfdbfe" : "#1d4ed8",
-              fontSize: "0.9rem",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            + Create Board
-          </button>
-
+        {/* Right-side: only Dark mode toggle remains */}
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <button
             type="button"
             onClick={() => setDarkMode((prev) => !prev)}
@@ -675,31 +552,23 @@ export default function ClipboardTemplatesPage() {
           >
             {darkMode ? "Light mode" : "Dark mode"}
           </button>
-
-          <button
-            type="button"
-            onClick={() => setShowCreator((prev) => !prev)}
-            style={{
-              padding: "0.4rem 0.8rem",
-              borderRadius: "999px",
-              border: "1px solid #d1d5db",
-              backgroundColor: showCreator
-                ? darkMode ? "#0f172a" : "#f9fafb"
-                : darkMode ? "#e5e7eb" : "#111827",
-              color: showCreator
-                ? darkMode ? "#e5e7eb" : "#111827"
-                : darkMode ? "#020617" : "#f9fafb",
-              fontSize: "0.9rem",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            {showCreator ? "Hide Creator" : "Show Creator"}
-          </button>
         </div>
       </div>
 
-      {/* TEMPLATE CREATOR */}
+      {/* SEARCH BAR — owns Create Board + New Template buttons */}
+      <SearchBar
+        search={search}
+        onSearchChange={setSearch}
+        darkMode={darkMode}
+        boards={boards}
+        searchScopeBoardId={searchScopeBoardId}
+        onSearchScopeChange={setSearchScopeBoardId}
+        showCreator={showCreator}
+        onToggleCreator={() => setShowCreator((prev) => !prev)}
+        onCreateBoard={handleOpenCreateBoardModal}
+      />
+
+      {/* TEMPLATE CREATOR — hidden by default */}
       {showCreator && (
         <TemplateCreator
           title={title}
@@ -713,25 +582,8 @@ export default function ClipboardTemplatesPage() {
         />
       )}
 
-      {/* SEARCH BAR */}
-      <SearchBar
-        search={search}
-        onSearchChange={setSearch}
-        darkMode={darkMode}
-        boards={boards}
-        searchScopeBoardId={searchScopeBoardId}
-        onSearchScopeChange={setSearchScopeBoardId}
-      />
-
       {/* CLIPBOARD GRID */}
-      <section
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          paddingRight: "0.25rem",
-          width: "100%",
-        }}
-      >
+      <section style={{ flex: 1, overflowY: "auto", paddingRight: "0.25rem", width: "100%" }}>
         <TemplatesGrid
           templates={filteredTemplates}
           onCopy={handleCopy}
@@ -759,13 +611,8 @@ export default function ClipboardTemplatesPage() {
       {showCreateBoardModal && (
         <div
           style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 60,
+            position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60,
           }}
           onClick={handleCancelCreateBoard}
         >
@@ -773,21 +620,12 @@ export default function ClipboardTemplatesPage() {
             onClick={(e) => e.stopPropagation()}
             style={{
               backgroundColor: darkMode ? "#1f2937" : "white",
-              padding: "2rem",
-              borderRadius: "0.5rem",
-              maxWidth: "28rem",
-              width: "90%",
+              padding: "2rem", borderRadius: "0.5rem",
+              maxWidth: "28rem", width: "90%",
               boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
             }}
           >
-            <h2
-              style={{
-                fontSize: "1.5rem",
-                fontWeight: "bold",
-                marginBottom: "1rem",
-                color: mainText,
-              }}
-            >
+            <h2 style={{ fontSize: "1.5rem", fontWeight: "bold", marginBottom: "1rem", color: mainText }}>
               Create New Board
             </h2>
             <input
@@ -797,48 +635,30 @@ export default function ClipboardTemplatesPage() {
               onChange={(e) => setNewBoardName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleCreateBoard(); }}
               style={{
-                width: "100%",
-                padding: "0.5rem",
-                borderRadius: "0.375rem",
+                width: "100%", padding: "0.5rem", borderRadius: "0.375rem",
                 border: "1px solid #d1d5db",
                 backgroundColor: darkMode ? "#374151" : "white",
-                color: mainText,
-                marginBottom: "1rem",
+                color: mainText, marginBottom: "1rem",
               }}
             />
-            <div
-              style={{
-                display: "flex",
-                gap: "0.75rem",
-                justifyContent: "flex-end",
-              }}
-            >
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
               <button
-                type="button"
-                onClick={handleCancelCreateBoard}
+                type="button" onClick={handleCancelCreateBoard}
                 style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
+                  padding: "0.5rem 1rem", borderRadius: "0.375rem",
                   border: "1px solid #d1d5db",
                   backgroundColor: darkMode ? "#374151" : "#f9fafb",
-                  color: mainText,
-                  cursor: "pointer",
-                  fontWeight: 500,
+                  color: mainText, cursor: "pointer", fontWeight: 500,
                 }}
               >
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleCreateBoard}
+                type="button" onClick={handleCreateBoard}
                 style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
-                  border: "none",
-                  backgroundColor: "#3b82f6",
-                  color: "white",
-                  cursor: "pointer",
-                  fontWeight: 500,
+                  padding: "0.5rem 1rem", borderRadius: "0.375rem",
+                  border: "none", backgroundColor: "#3b82f6",
+                  color: "white", cursor: "pointer", fontWeight: 500,
                 }}
               >
                 Create
@@ -852,13 +672,8 @@ export default function ClipboardTemplatesPage() {
       {showAssignBoardModal && (
         <div
           style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 60,
+            position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60,
           }}
           onClick={handleCancelAssignBoard}
         >
@@ -866,71 +681,38 @@ export default function ClipboardTemplatesPage() {
             onClick={(e) => e.stopPropagation()}
             style={{
               backgroundColor: darkMode ? "#1f2937" : "white",
-              padding: "2rem",
-              borderRadius: "0.5rem",
-              maxWidth: "28rem",
-              width: "90%",
+              padding: "2rem", borderRadius: "0.5rem",
+              maxWidth: "28rem", width: "90%",
               boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
             }}
           >
-            <h2
-              style={{
-                fontSize: "1.5rem",
-                fontWeight: "bold",
-                marginBottom: "1rem",
-                color: mainText,
-              }}
-            >
+            <h2 style={{ fontSize: "1.5rem", fontWeight: "bold", marginBottom: "1rem", color: mainText }}>
               Assign to Board
             </h2>
-
-            <label
-              style={{
-                display: "block",
-                marginBottom: "0.5rem",
-                fontSize: "0.9rem",
-                color: darkMode ? "#d1d5db" : "#4b5563",
-              }}
-            >
+            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.9rem", color: darkMode ? "#d1d5db" : "#4b5563" }}>
               Select a board:
             </label>
             <select
               value={assignBoardId}
               onChange={(e) => setAssignBoardId(e.target.value)}
               style={{
-                width: "100%",
-                padding: "0.5rem",
-                borderRadius: "0.375rem",
+                width: "100%", padding: "0.5rem", borderRadius: "0.375rem",
                 border: "1px solid #d1d5db",
                 backgroundColor: darkMode ? "#374151" : "white",
-                color: mainText,
-                marginBottom: "1rem",
+                color: mainText, marginBottom: "1rem",
               }}
             >
               {boards.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
+                <option key={b.id} value={b.id}>{b.name}</option>
               ))}
             </select>
 
-            <div
-              style={{
-                marginBottom: "1rem",
-                padding: "0.75rem",
-                backgroundColor: darkMode ? "#374151" : "#f9fafb",
-                borderRadius: "0.375rem",
-                border: "1px solid #d1d5db",
-              }}
-            >
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "0.5rem",
-                  fontSize: "0.85rem",
-                  color: darkMode ? "#d1d5db" : "#4b5563",
-                }}
-              >
+            <div style={{
+              marginBottom: "1rem", padding: "0.75rem",
+              backgroundColor: darkMode ? "#374151" : "#f9fafb",
+              borderRadius: "0.375rem", border: "1px solid #d1d5db",
+            }}>
+              <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.85rem", color: darkMode ? "#d1d5db" : "#4b5563" }}>
                 Or create a new board:
               </label>
               <input
@@ -938,70 +720,44 @@ export default function ClipboardTemplatesPage() {
                 placeholder="New board name"
                 value={assignNewBoardName}
                 onChange={(e) => setAssignNewBoardName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreateBoardFromAssign();
-                }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreateBoardFromAssign(); }}
                 style={{
-                  width: "100%",
-                  padding: "0.4rem",
-                  borderRadius: "0.375rem",
+                  width: "100%", padding: "0.4rem", borderRadius: "0.375rem",
                   border: "1px solid #d1d5db",
                   backgroundColor: darkMode ? "#1f2937" : "white",
-                  color: mainText,
-                  marginBottom: "0.5rem",
+                  color: mainText, marginBottom: "0.5rem",
                 }}
               />
               <button
-                type="button"
-                onClick={handleCreateBoardFromAssign}
+                type="button" onClick={handleCreateBoardFromAssign}
                 style={{
-                  padding: "0.4rem 0.8rem",
-                  borderRadius: "0.375rem",
-                  border: "none",
-                  backgroundColor: "#10b981",
-                  color: "white",
-                  cursor: "pointer",
-                  fontSize: "0.85rem",
-                  fontWeight: 500,
+                  padding: "0.4rem 0.8rem", borderRadius: "0.375rem",
+                  border: "none", backgroundColor: "#10b981",
+                  color: "white", cursor: "pointer", fontSize: "0.85rem", fontWeight: 500,
                 }}
               >
                 Create & Use
               </button>
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: "0.75rem",
-                justifyContent: "flex-end",
-              }}
-            >
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
               <button
-                type="button"
-                onClick={handleCancelAssignBoard}
+                type="button" onClick={handleCancelAssignBoard}
                 style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
+                  padding: "0.5rem 1rem", borderRadius: "0.375rem",
                   border: "1px solid #d1d5db",
                   backgroundColor: darkMode ? "#374151" : "#f9fafb",
-                  color: mainText,
-                  cursor: "pointer",
-                  fontWeight: 500,
+                  color: mainText, cursor: "pointer", fontWeight: 500,
                 }}
               >
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleConfirmAssignBoard}
+                type="button" onClick={handleConfirmAssignBoard}
                 style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
-                  border: "none",
-                  backgroundColor: "#3b82f6",
-                  color: "white",
-                  cursor: "pointer",
-                  fontWeight: 500,
+                  padding: "0.5rem 1rem", borderRadius: "0.375rem",
+                  border: "none", backgroundColor: "#3b82f6",
+                  color: "white", cursor: "pointer", fontWeight: 500,
                 }}
               >
                 Confirm
@@ -1015,13 +771,8 @@ export default function ClipboardTemplatesPage() {
       {showDeleteBoardModal && (
         <div
           style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 70,
+            position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70,
           }}
           onClick={handleCancelDeleteBoard}
         >
@@ -1029,66 +780,37 @@ export default function ClipboardTemplatesPage() {
             onClick={(e) => e.stopPropagation()}
             style={{
               backgroundColor: darkMode ? "#1f2937" : "white",
-              padding: "2rem",
-              borderRadius: "0.5rem",
-              maxWidth: "28rem",
-              width: "90%",
+              padding: "2rem", borderRadius: "0.5rem",
+              maxWidth: "28rem", width: "90%",
               boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
             }}
           >
-            <h2
-              style={{
-                fontSize: "1.5rem",
-                fontWeight: "bold",
-                marginBottom: "1rem",
-                color: mainText,
-              }}
-            >
+            <h2 style={{ fontSize: "1.5rem", fontWeight: "bold", marginBottom: "1rem", color: mainText }}>
               Delete Board?
             </h2>
-            <p
-              style={{
-                marginBottom: "1.5rem",
-                color: darkMode ? "#d1d5db" : "#4b5563",
-              }}
-            >
+            <p style={{ marginBottom: "1.5rem", color: darkMode ? "#d1d5db" : "#4b5563" }}>
               Are you sure you want to delete the board{" "}
               <strong>"{boardToDeleteName}"</strong>? This will also delete all
               templates in this board. This action cannot be undone.
             </p>
-            <div
-              style={{
-                display: "flex",
-                gap: "0.75rem",
-                justifyContent: "flex-end",
-              }}
-            >
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
               <button
-                type="button"
-                onClick={handleCancelDeleteBoard}
+                type="button" onClick={handleCancelDeleteBoard}
                 style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
+                  padding: "0.5rem 1rem", borderRadius: "0.375rem",
                   border: "1px solid #d1d5db",
                   backgroundColor: darkMode ? "#374151" : "#f9fafb",
-                  color: mainText,
-                  cursor: "pointer",
-                  fontWeight: 500,
+                  color: mainText, cursor: "pointer", fontWeight: 500,
                 }}
               >
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleConfirmDeleteBoard}
+                type="button" onClick={handleConfirmDeleteBoard}
                 style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "0.375rem",
-                  border: "none",
-                  backgroundColor: "#dc2626",
-                  color: "white",
-                  cursor: "pointer",
-                  fontWeight: 500,
+                  padding: "0.5rem 1rem", borderRadius: "0.375rem",
+                  border: "none", backgroundColor: "#dc2626",
+                  color: "white", cursor: "pointer", fontWeight: 500,
                 }}
               >
                 Delete Board
