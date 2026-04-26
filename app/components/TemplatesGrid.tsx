@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, type CSSProperties } from "react";
+import React, { useState, useEffect, useRef, type CSSProperties } from "react";
 
 type Template = {
   id: string;
@@ -56,11 +56,13 @@ export default function TemplatesGrid({
   canDeleteBoard,
   onRequestDeleteBoard,
 }: TemplatesGridProps) {
-  const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>(
-    {}
-  );
+  const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteTitle, setConfirmDeleteTitle] = useState<string>("");
+
+  // Tracks which card is showing the "Copied!" toast
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Track window width for responsive columns
   const [windowWidth, setWindowWidth] = useState<number | null>(null);
@@ -69,10 +71,31 @@ export default function TemplatesGrid({
     function handleResize() {
       setWindowWidth(window.innerWidth);
     }
-    handleResize(); // initial
+    handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
+
+  function handleCopy(templateId: string, body: string) {
+    onCopy(body);
+
+    // Clear any existing timer
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+
+    setCopiedId(templateId);
+
+    // Auto-dismiss after 2s
+    copiedTimerRef.current = setTimeout(() => {
+      setCopiedId(null);
+    }, 2000);
+  }
 
   // 🔍 Are we in "search across all boards" mode?
   const isSearchView = activeBoardName.startsWith("Search:");
@@ -81,7 +104,6 @@ export default function TemplatesGrid({
   if (!templates || templates.length === 0) {
     return (
       <>
-        {/* Board / view indicator row still shows even if empty */}
         <div
           style={{
             display: "flex",
@@ -92,7 +114,6 @@ export default function TemplatesGrid({
             flexWrap: "wrap",
           }}
         >
-          {/* LEFT: board name + delete board (hidden in search view) */}
           <div
             style={{
               display: "flex",
@@ -137,15 +158,12 @@ export default function TemplatesGrid({
               </button>
             )}
           </div>
-
-          {/* RIGHT: no minimize button when empty */}
         </div>
 
-        {/* Empty state message */}
         {isSearchView ? (
           <p
             style={{
-              color: darkMode ? "#fecaca" : "#b91c1c", // 🔴 red message
+              color: darkMode ? "#fecaca" : "#b91c1c",
               fontSize: "0.9rem",
             }}
           >
@@ -167,17 +185,11 @@ export default function TemplatesGrid({
   }
 
   function toggleCollapse(id: string) {
-    setCollapsedById((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
+    setCollapsedById((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
   function setExpanded(id: string) {
-    setCollapsedById((prev) => ({
-      ...prev,
-      [id]: false,
-    }));
+    setCollapsedById((prev) => ({ ...prev, [id]: false }));
   }
 
   function openDeleteConfirm(id: string, title: string) {
@@ -186,9 +198,7 @@ export default function TemplatesGrid({
   }
 
   function handleConfirmDelete() {
-    if (confirmDeleteId) {
-      onDelete(confirmDeleteId);
-    }
+    if (confirmDeleteId) onDelete(confirmDeleteId);
     setConfirmDeleteId(null);
     setConfirmDeleteTitle("");
   }
@@ -198,50 +208,37 @@ export default function TemplatesGrid({
     setConfirmDeleteTitle("");
   }
 
-  // bulk collapse / expand
   const allCollapsed = templates.length
     ? templates.every((t) => collapsedById[t.id])
     : false;
 
   function collapseAll() {
     const next: Record<string, boolean> = {};
-    templates.forEach((t) => {
-      next[t.id] = true;
-    });
+    templates.forEach((t) => { next[t.id] = true; });
     setCollapsedById(next);
   }
 
   function expandAll() {
     const next: Record<string, boolean> = {};
-    templates.forEach((t) => {
-      next[t.id] = false;
-    });
+    templates.forEach((t) => { next[t.id] = false; });
     setCollapsedById(next);
   }
 
   const bulkLabel = allCollapsed ? "Expand all" : "Minimize all";
 
-  // Responsive column count:
-  //  - >= 1200px -> 4
-  //  - >= 768px  -> 3
-  //  - else      -> 1
   const effectiveWidth = windowWidth ?? 1200;
   const numColumns =
     effectiveWidth >= 1200 ? 4 : effectiveWidth >= 768 ? 3 : 1;
 
-  // Pinned first (ordered by pinnedAt), then unpinned
   const pinnedTemplates = templates
     .filter((t) => t.pinned)
     .sort((a, b) => (a.pinnedAt ?? 0) - (b.pinnedAt ?? 0));
-
   const unpinnedTemplates = templates.filter((t) => !t.pinned);
-
   const orderedTemplates: Template[] = [...pinnedTemplates, ...unpinnedTemplates];
 
   const columns: Template[][] = Array.from({ length: numColumns }, () => []);
   orderedTemplates.forEach((template, index) => {
-    const colIndex = index % numColumns;
-    columns[colIndex].push(template);
+    columns[index % numColumns].push(template);
   });
 
   const cardBaseBg = darkMode ? "#020617" : "white";
@@ -264,6 +261,19 @@ export default function TemplatesGrid({
 
   return (
     <>
+      {/* Keyframe animation for the copied toast */}
+      <style>{`
+        @keyframes templify-fade-up {
+          0%   { opacity: 0; transform: translateY(6px) scale(0.95); }
+          15%  { opacity: 1; transform: translateY(0)   scale(1);    }
+          75%  { opacity: 1; transform: translateY(0)   scale(1);    }
+          100% { opacity: 0; transform: translateY(-4px) scale(0.97); }
+        }
+        .templify-copied-toast {
+          animation: templify-fade-up 2s ease forwards;
+        }
+      `}</style>
+
       {/* Board indicator + bulk controls row */}
       <div
         style={{
@@ -275,7 +285,6 @@ export default function TemplatesGrid({
           flexWrap: "wrap",
         }}
       >
-        {/* LEFT: board name + delete board */}
         <div
           style={{
             display: "flex",
@@ -321,30 +330,17 @@ export default function TemplatesGrid({
           )}
         </div>
 
-        {/* RIGHT: bulk minimize/expand */}
         <button
           type="button"
           style={bulkButtonStyle}
-          onClick={() => {
-            if (allCollapsed) {
-              expandAll();
-            } else {
-              collapseAll();
-            }
-          }}
+          onClick={() => (allCollapsed ? expandAll() : collapseAll())}
         >
           {bulkLabel}
         </button>
       </div>
 
-      {/* Masonry-like columns (responsive numColumns) */}
-      <div
-        style={{
-          display: "flex",
-          gap: "1rem",
-          alignItems: "flex-start",
-        }}
-      >
+      {/* Masonry-like columns */}
+      <div style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
         {columns.map((columnTemplates, colIdx) => (
           <div
             key={colIdx}
@@ -360,23 +356,21 @@ export default function TemplatesGrid({
               const isEditing = editingId === template.id;
               const isRecentlyAdded = template.id === recentlyAddedId;
               const isPinned = !!template.pinned;
+              const isCopied = copiedId === template.id;
 
               let cardStyle: CSSProperties = {
                 borderTopStyle: "solid",
                 borderBottomStyle: "solid",
                 borderLeftStyle: "solid",
                 borderRightStyle: "solid",
-
                 borderTopWidth: "3px",
                 borderBottomWidth: "3px",
                 borderLeftWidth: "1px",
                 borderRightWidth: "1px",
-
                 borderTopColor: cardAccent,
                 borderBottomColor: cardAccent,
                 borderLeftColor: cardBaseBorder,
                 borderRightColor: cardBaseBorder,
-
                 borderRadius: "10px",
                 padding: collapsed ? "0.35rem 0.5rem" : "0.75rem",
                 display: "flex",
@@ -442,9 +436,7 @@ export default function TemplatesGrid({
                         style={{
                           padding: "0.25rem 0.75rem",
                           borderRadius: "999px",
-                          border: `1px solid ${
-                            darkMode ? "#6b7280" : "#9ca3af"
-                          }`,
+                          border: `1px solid ${darkMode ? "#6b7280" : "#9ca3af"}`,
                           backgroundColor: darkMode ? "#020617" : "white",
                           color: cardTextColor,
                           fontSize: "0.75rem",
@@ -459,41 +451,35 @@ export default function TemplatesGrid({
                         <>
                           <button
                             type="button"
-                            onClick={() => onCopy(template.body)}
+                            onClick={() => handleCopy(template.id, template.body)}
                             style={{
                               padding: "0.2rem 0.6rem",
                               borderRadius: "999px",
-                              border: `1px solid ${
-                                darkMode ? "#4b5563" : "#d1d5db"
-                              }`,
-                              backgroundColor: darkMode
-                                ? "#020617"
-                                : "white",
-                              color: "#2563eb",
+                              border: `1px solid ${isCopied ? "#16a34a" : darkMode ? "#4b5563" : "#d1d5db"}`,
+                              backgroundColor: isCopied
+                                ? darkMode ? "#052e16" : "#f0fdf4"
+                                : darkMode ? "#020617" : "white",
+                              color: isCopied ? "#16a34a" : "#2563eb",
                               fontSize: "0.75rem",
                               cursor: "pointer",
+                              transition: "all 0.2s ease",
+                              fontWeight: isCopied ? 600 : 400,
                             }}
                           >
-                            Copy
+                            {isCopied ? "✓ Copied" : "Copy"}
                           </button>
 
                           <button
                             type="button"
                             onClick={() => {
-                              if (collapsed) {
-                                setExpanded(template.id);
-                              }
+                              if (collapsed) setExpanded(template.id);
                               onStartEdit(template);
                             }}
                             style={{
                               padding: "0.2rem 0.6rem",
                               borderRadius: "999px",
-                              border: `1px solid ${
-                                darkMode ? "#9a3412" : "#d97706"
-                              }`,
-                              backgroundColor: darkMode
-                                ? "#020617"
-                                : "white",
+                              border: `1px solid ${darkMode ? "#9a3412" : "#d97706"}`,
+                              backgroundColor: darkMode ? "#020617" : "white",
                               color: darkMode ? "#fdba74" : "#b45309",
                               fontSize: "0.75rem",
                               cursor: "pointer",
@@ -504,18 +490,12 @@ export default function TemplatesGrid({
 
                           <button
                             type="button"
-                            onClick={() =>
-                              onRequestAssignBoard(template.id)
-                            }
+                            onClick={() => onRequestAssignBoard(template.id)}
                             style={{
                               padding: "0.2rem 0.6rem",
                               borderRadius: "999px",
-                              border: `1px solid ${
-                                darkMode ? "#4b5563" : "#d1d5db"
-                              }`,
-                              backgroundColor: darkMode
-                                ? "#020617"
-                                : "white",
+                              border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`,
+                              backgroundColor: darkMode ? "#020617" : "white",
                               color: darkMode ? "#e5e7eb" : "#111827",
                               fontSize: "0.75rem",
                               cursor: "pointer",
@@ -528,28 +508,18 @@ export default function TemplatesGrid({
                           <button
                             type="button"
                             onClick={() =>
-                              isPinned
-                                ? onUnpin(template.id)
-                                : onPin(template.id)
+                              isPinned ? onUnpin(template.id) : onPin(template.id)
                             }
                             style={{
                               padding: "0.2rem 0.6rem",
                               borderRadius: "999px",
                               border: `1px solid ${
-                                isPinned
-                                  ? "#f97316"
-                                  : darkMode
-                                  ? "#4b5563"
-                                  : "#d1d5db"
+                                isPinned ? "#f97316" : darkMode ? "#4b5563" : "#d1d5db"
                               }`,
-                              backgroundColor: darkMode
-                                ? "#020617"
-                                : "white",
+                              backgroundColor: darkMode ? "#020617" : "white",
                               color: isPinned
                                 ? "#ea580c"
-                                : darkMode
-                                ? "#e5e7eb"
-                                : "#111827",
+                                : darkMode ? "#e5e7eb" : "#111827",
                               fontSize: "0.75rem",
                               cursor: "pointer",
                               fontWeight: 500,
@@ -570,9 +540,7 @@ export default function TemplatesGrid({
                     >
                       <button
                         type="button"
-                        onClick={() =>
-                          openDeleteConfirm(template.id, template.title)
-                        }
+                        onClick={() => openDeleteConfirm(template.id, template.title)}
                         title="Delete template"
                         style={{
                           padding: "0.1rem 0.4rem",
@@ -595,9 +563,7 @@ export default function TemplatesGrid({
                     <input
                       type="text"
                       value={editingTitle}
-                      onChange={(e) =>
-                        onChangeEditingTitle(e.target.value)
-                      }
+                      onChange={(e) => onChangeEditingTitle(e.target.value)}
                       style={{
                         width: "100%",
                         padding: "0.4rem 0.6rem",
@@ -646,14 +612,35 @@ export default function TemplatesGrid({
                   {/* BODY / EDIT AREA */}
                   {!collapsed && (
                     <>
+                      {/* ✅ COPIED TOAST — appears above body when active */}
+                      {isCopied && (
+                        <div
+                          className="templify-copied-toast"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.35rem",
+                            padding: "0.3rem 0.65rem",
+                            borderRadius: "6px",
+                            backgroundColor: darkMode ? "#052e16" : "#f0fdf4",
+                            border: `1px solid ${darkMode ? "#166534" : "#bbf7d0"}`,
+                            color: darkMode ? "#4ade80" : "#15803d",
+                            fontSize: "0.8rem",
+                            fontWeight: 500,
+                            width: "fit-content",
+                          }}
+                        >
+                          <span style={{ fontSize: "0.9rem" }}>✓</span>
+                          Saved to clipboard
+                        </div>
+                      )}
+
                       {isEditing ? (
                         <>
                           <textarea
                             rows={5}
                             value={editingBody}
-                            onChange={(e) =>
-                              onChangeEditingBody(e.target.value)
-                            }
+                            onChange={(e) => onChangeEditingBody(e.target.value)}
                             style={{
                               whiteSpace: "pre-wrap",
                               wordBreak: "break-word",
@@ -699,12 +686,8 @@ export default function TemplatesGrid({
                               style={{
                                 padding: "0.4rem 0.75rem",
                                 borderRadius: "6px",
-                                border: `1px solid ${
-                                  darkMode ? "#6b7280" : "#9ca3af"
-                                }`,
-                                backgroundColor: darkMode
-                                  ? "#020617"
-                                  : "white",
+                                border: `1px solid ${darkMode ? "#6b7280" : "#9ca3af"}`,
+                                backgroundColor: darkMode ? "#020617" : "white",
                                 color: darkMode ? "#e5e7eb" : "#374151",
                                 fontSize: "0.9rem",
                                 cursor: "pointer",
@@ -802,9 +785,7 @@ export default function TemplatesGrid({
                 style={{
                   padding: "0.35rem 0.8rem",
                   borderRadius: "6px",
-                  border: `1px solid ${
-                    darkMode ? "#4b5563" : "#d1d5db"
-                  }`,
+                  border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`,
                   backgroundColor: darkMode ? "#020617" : "white",
                   color: darkMode ? "#e5e7eb" : "#111827",
                   fontSize: "0.85rem",

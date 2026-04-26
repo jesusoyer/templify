@@ -190,3 +190,6 @@ Potential future improvements:
 - Multi-device sync with a real backend
 - Keyboard shortcuts (copy, pin, search, create)
 - Better notifications (toasts instead of alerts)
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.

@@ -173,7 +173,6 @@ export default function ClipboardTemplatesPage() {
 
   // ---------- Template creation ----------
 
-  // Save to the *currently active* board (or Home if missing)
   function handleAddTemplateToActiveBoard(e: React.FormEvent) {
     e.preventDefault();
 
@@ -202,7 +201,6 @@ export default function ClipboardTemplatesPage() {
     setRecentlyAddedId(newTemplate.id);
   }
 
-  // Creator: "Add to" → open assign-board modal for a NEW template
   function handleCreatorAddToBoardClick() {
     const trimmedTitle = title.trim();
     const trimmedBody = body.trim();
@@ -242,7 +240,6 @@ export default function ClipboardTemplatesPage() {
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
-        alert("Template body copied to clipboard!");
       } else {
         const textarea = document.createElement("textarea");
         textarea.value = text;
@@ -250,22 +247,18 @@ export default function ClipboardTemplatesPage() {
         textarea.select();
         document.execCommand("copy");
         document.body.removeChild(textarea);
-        alert("Template body copied to clipboard!");
       }
     } catch (err) {
       console.error("Failed to copy text", err);
-      alert("Could not copy to clipboard.");
     }
   }
 
-  // Start editing a template
   function handleStartEdit(template: Template) {
     setEditingId(template.id);
     setEditingTitle(template.title);
     setEditingBody(template.body);
   }
 
-  // Save edits
   function handleSaveEdit(id: string) {
     const trimmedTitle = editingTitle.trim();
     const trimmedBody = editingBody.trim();
@@ -286,7 +279,6 @@ export default function ClipboardTemplatesPage() {
     setEditingBody("");
   }
 
-  // Cancel editing
   function handleCancelEdit() {
     setEditingId(null);
     setEditingTitle("");
@@ -300,11 +292,7 @@ export default function ClipboardTemplatesPage() {
     setTemplates((prev) =>
       prev.map((t) =>
         t.id === id
-          ? {
-              ...t,
-              pinned: true,
-              pinnedAt: t.pinnedAt ?? now,
-            }
+          ? { ...t, pinned: true, pinnedAt: t.pinnedAt ?? now }
           : t
       )
     );
@@ -313,13 +301,7 @@ export default function ClipboardTemplatesPage() {
   function handleUnpinTemplate(id: string) {
     setTemplates((prev) =>
       prev.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              pinned: false,
-              pinnedAt: null,
-            }
-          : t
+        t.id === id ? { ...t, pinned: false, pinnedAt: null } : t
       )
     );
   }
@@ -338,11 +320,7 @@ export default function ClipboardTemplatesPage() {
       "-" +
       Date.now().toString(36);
 
-    const newBoard: Board = {
-      id,
-      name: trimmed,
-      isDefault: false,
-    };
+    const newBoard: Board = { id, name: trimmed, isDefault: false };
 
     setBoards((prev) => [...prev, newBoard]);
     setActiveBoardId(newBoard.id);
@@ -360,7 +338,7 @@ export default function ClipboardTemplatesPage() {
     setShowCreateBoardModal(false);
   }
 
-  // ---------- Assign template to board (existing template) ----------
+  // ---------- Assign template to board ----------
 
   function handleRequestAssignBoard(templateId: string) {
     if (!boards.length) {
@@ -370,10 +348,7 @@ export default function ClipboardTemplatesPage() {
 
     const template = templates.find((t) => t.id === templateId);
     const defaultBoardId =
-      template?.boardId ||
-      activeBoardId ||
-      boards[0]?.id ||
-      HOME_BOARD_ID;
+      template?.boardId || activeBoardId || boards[0]?.id || HOME_BOARD_ID;
 
     setAssignSource("existing");
     setAssignTemplateId(templateId);
@@ -381,7 +356,6 @@ export default function ClipboardTemplatesPage() {
     setShowAssignBoardModal(true);
   }
 
-  // Helper: do the actual assignment (used by Confirm and "Create & use")
   function performAssignToBoard(boardId: string) {
     if (!boardId) {
       alert("Please choose a board.");
@@ -389,14 +363,12 @@ export default function ClipboardTemplatesPage() {
     }
 
     if (assignSource === "existing" && assignTemplateId) {
-      // move existing template to chosen board
       setTemplates((prev) =>
         prev.map((t) =>
           t.id === assignTemplateId ? { ...t, boardId } : t
         )
       );
     } else if (assignSource === "new") {
-      // create a brand new template into chosen board
       const trimmedTitle = pendingNewTemplateTitle.trim();
       const trimmedBody = pendingNewTemplateBody.trim();
 
@@ -420,7 +392,6 @@ export default function ClipboardTemplatesPage() {
       setRecentlyAddedId(newTemplate.id);
     }
 
-    // reset assign state
     setShowAssignBoardModal(false);
     setAssignBoardId("");
     setAssignTemplateId(null);
@@ -444,7 +415,6 @@ export default function ClipboardTemplatesPage() {
     setAssignNewBoardName("");
   }
 
-  // create a board *from* the assign modal and immediately use it
   function handleCreateBoardFromAssign() {
     const trimmed = assignNewBoardName.trim();
     if (!trimmed) {
@@ -457,18 +427,13 @@ export default function ClipboardTemplatesPage() {
       "-" +
       Date.now().toString(36);
 
-    const newBoard: Board = {
-      id,
-      name: trimmed,
-      isDefault: false,
-    };
+    const newBoard: Board = { id, name: trimmed, isDefault: false };
 
     setBoards((prev) => [...prev, newBoard]);
     setActiveBoardId(newBoard.id);
     setAssignBoardId(id);
     setAssignNewBoardName("");
 
-    // Immediately assign this template / new template into the new board
     performAssignToBoard(id);
   }
 
@@ -498,10 +463,8 @@ export default function ClipboardTemplatesPage() {
 
       setActiveBoardId((prevActive) => {
         if (prevActive && prevActive !== boardToDeleteId) return prevActive;
-
         const home = updated.find((b) => b.id === HOME_BOARD_ID);
         if (home) return home.id;
-
         return updated[0]?.id ?? null;
       });
 
@@ -523,7 +486,7 @@ export default function ClipboardTemplatesPage() {
     setBoardToDeleteName("");
   }
 
-  // ---------- Filtering (with search scope) ----------
+  // ---------- Filtering ----------
 
   const normalizedSearch = search.toLowerCase().trim();
 
@@ -536,15 +499,12 @@ export default function ClipboardTemplatesPage() {
   let gridCanDeleteBoard: boolean;
 
   if (normalizedSearch) {
-    // We are searching
     if (searchScopeBoardId === "all") {
-      // search across all boards
       filteredTemplates = templates.filter((t) =>
         t.title.toLowerCase().includes(normalizedSearch)
       );
       gridBoardName = `Search: "${search}" (all boards)`;
     } else {
-      // search within a specific board
       filteredTemplates = templates.filter(
         (t) =>
           t.boardId === searchScopeBoardId &&
@@ -555,23 +515,17 @@ export default function ClipboardTemplatesPage() {
         "Selected board";
       gridBoardName = `Search: "${search}" (${scopeBoardName})`;
     }
-
-    // In search mode we don't show "Delete Board" in the grid header
     gridCanDeleteBoard = false;
   } else {
-    // Normal per-board view (no search text)
     filteredTemplates = baseActiveBoardTemplates;
-
     gridBoardName =
       boards.find((b) => b.id === activeBoardId)?.name ??
       boards.find((b) => b.id === HOME_BOARD_ID)?.name ??
       "Home";
-
     gridCanDeleteBoard =
       !!activeBoardId && activeBoardId !== HOME_BOARD_ID;
   }
 
-  // For the creator button label: always based on the actual active board, not search
   const creatorBoardName =
     boards.find((b) => b.id === activeBoardId)?.name ??
     boards.find((b) => b.id === HOME_BOARD_ID)?.name ??
@@ -623,7 +577,6 @@ export default function ClipboardTemplatesPage() {
             TEMPLIFY - A clipboard on Steroids!
           </h1>
 
-          {/* Board selector + inline delete button */}
           <div
             style={{
               display: "flex",
@@ -659,7 +612,6 @@ export default function ClipboardTemplatesPage() {
               ))}
             </select>
 
-            {/* Show delete button only for non-Home boards */}
             {activeBoardId && activeBoardId !== HOME_BOARD_ID && (
               <button
                 type="button"
@@ -690,7 +642,6 @@ export default function ClipboardTemplatesPage() {
             flexWrap: "wrap",
           }}
         >
-          {/* Create board button – to the LEFT of dark mode */}
           <button
             type="button"
             onClick={handleOpenCreateBoardModal}
@@ -708,7 +659,6 @@ export default function ClipboardTemplatesPage() {
             + Create Board
           </button>
 
-          {/* Dark mode toggle */}
           <button
             type="button"
             onClick={() => setDarkMode((prev) => !prev)}
@@ -726,7 +676,6 @@ export default function ClipboardTemplatesPage() {
             {darkMode ? "Light mode" : "Dark mode"}
           </button>
 
-          {/* Creator toggle */}
           <button
             type="button"
             onClick={() => setShowCreator((prev) => !prev)}
@@ -735,19 +684,11 @@ export default function ClipboardTemplatesPage() {
               borderRadius: "999px",
               border: "1px solid #d1d5db",
               backgroundColor: showCreator
-                ? darkMode
-                  ? "#0f172a"
-                  : "#f9fafb"
-                : darkMode
-                ? "#e5e7eb"
-                : "#111827",
+                ? darkMode ? "#0f172a" : "#f9fafb"
+                : darkMode ? "#e5e7eb" : "#111827",
               color: showCreator
-                ? darkMode
-                  ? "#e5e7eb"
-                  : "#111827"
-                : darkMode
-                ? "#020617"
-                : "#f9fafb",
+                ? darkMode ? "#e5e7eb" : "#111827"
+                : darkMode ? "#020617" : "#f9fafb",
               fontSize: "0.9rem",
               cursor: "pointer",
               fontWeight: 500,
@@ -758,7 +699,7 @@ export default function ClipboardTemplatesPage() {
         </div>
       </div>
 
-      {/* TEMPLATE CREATOR (can be hidden) */}
+      {/* TEMPLATE CREATOR */}
       {showCreator && (
         <TemplateCreator
           title={title}
@@ -854,11 +795,7 @@ export default function ClipboardTemplatesPage() {
               placeholder="Board name"
               value={newBoardName}
               onChange={(e) => setNewBoardName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleCreateBoard();
-                }
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreateBoard(); }}
               style={{
                 width: "100%",
                 padding: "0.5rem",
@@ -1002,9 +939,7 @@ export default function ClipboardTemplatesPage() {
                 value={assignNewBoardName}
                 onChange={(e) => setAssignNewBoardName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleCreateBoardFromAssign();
-                  }
+                  if (e.key === "Enter") handleCreateBoardFromAssign();
                 }}
                 style={{
                   width: "100%",
