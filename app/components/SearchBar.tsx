@@ -162,7 +162,7 @@ export default function SearchBar({
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
 
-        {/* Top row: label + copied badge + action buttons */}
+        {/* Top row: label + copied badge + Create Board + New Template */}
         <div
           style={{
             display: "flex",
@@ -196,28 +196,8 @@ export default function SearchBar({
             )}
           </div>
 
-          {/* Right side: Clear + Create Board + New Template */}
+          {/* Right side: Create Board + New Template */}
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            {search.trim().length > 0 && (
-              <button
-                type="button"
-                onClick={handleClear}
-                style={{
-                  padding: "0.35rem 0.9rem",
-                  borderRadius: "999px",
-                  border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`,
-                  backgroundColor: darkMode ? "#020617" : "white",
-                  color: textColor,
-                  fontSize: "0.8rem",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Clear
-              </button>
-            )}
-
-            {/* Create Board — same blue style as the original header button */}
             <button
               type="button"
               onClick={onCreateBoard}
@@ -236,7 +216,6 @@ export default function SearchBar({
               + Create Board
             </button>
 
-            {/* New Template toggle */}
             <button
               type="button"
               onClick={onToggleCreator}
@@ -280,52 +259,76 @@ export default function SearchBar({
           }}
         />
 
-        {/* Toggles row */}
+        {/* Bottom row: toggles + char count (left) | Clear Search Bar (right) */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "1rem",
+            justifyContent: "space-between",
             flexWrap: "wrap",
+            gap: "0.5rem",
             paddingTop: "0.1rem",
           }}
         >
-          <label style={checkboxLabelStyle}>
-            <input
-              type="checkbox"
-              checked={autoCaps}
-              onChange={(e) => handleAutoCapsToggle(e.target.checked)}
-              style={checkboxStyle}
-            />
-            <span>Auto CAPS</span>
-            {autoCaps && (
-              <span style={{ fontSize: "0.7rem", color: accent }}>on</span>
-            )}
-          </label>
+          {/* Left: checkboxes + char count */}
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={autoCaps}
+                onChange={(e) => handleAutoCapsToggle(e.target.checked)}
+                style={checkboxStyle}
+              />
+              <span>Auto CAPS</span>
+              {autoCaps && (
+                <span style={{ fontSize: "0.7rem", color: accent }}>on</span>
+              )}
+            </label>
 
-          <label style={checkboxLabelStyle}>
-            <input
-              type="checkbox"
-              checked={trimTo100}
-              onChange={(e) => handleTrimToggle(e.target.checked)}
-              style={checkboxStyle}
-            />
-            <span>Trim to 100</span>
-            {trimTo100 && (
-              <span style={{ fontSize: "0.7rem", color: accent }}>on</span>
-            )}
-          </label>
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={trimTo100}
+                onChange={(e) => handleTrimToggle(e.target.checked)}
+                style={checkboxStyle}
+              />
+              <span>Trim to 100</span>
+              {trimTo100 && (
+                <span style={{ fontSize: "0.7rem", color: accent }}>on</span>
+              )}
+            </label>
 
-          {trimTo100 && search.length > 0 && (
-            <span
+            {trimTo100 && search.length > 0 && (
+              <span
+                style={{
+                  fontSize: "0.75rem",
+                  color: search.length >= 100 ? "#b91c1c" : mutedText,
+                }}
+              >
+                {search.length}/100
+              </span>
+            )}
+          </div>
+
+          {/* Right: Clear Search Bar — only visible when there's text */}
+          {search.trim().length > 0 && (
+            <button
+              type="button"
+              onClick={handleClear}
               style={{
-                fontSize: "0.75rem",
-                color: search.length >= 100 ? "#b91c1c" : mutedText,
-                marginLeft: "auto",
+                padding: "0.3rem 0.85rem",
+                borderRadius: "999px",
+                border: "1px solid #fca5a5",
+                backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5",
+                color: darkMode ? "#fca5a5" : "#dc2626",
+                fontSize: "0.78rem",
+                cursor: "pointer",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
               }}
             >
-              {search.length}/100
-            </span>
+              Clear Search Bar
+            </button>
           )}
         </div>
 
