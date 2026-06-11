@@ -1,19 +1,33 @@
 import React, { useState, useEffect, useRef } from "react";
 
+type Page = {
+  id: string;
+  name: string;
+};
+
 type Board = {
   id: string;
   name: string;
+  pageId: string;
 };
 
 type SearchBarProps = {
   search: string;
   onSearchChange: (value: string) => void;
   darkMode: boolean;
+
+  // Pages + boards for scope selector
+  pages: Page[];
   boards: Board[];
-  searchScopeBoardId: string;
-  onSearchScopeChange: (boardId: string) => void;
+  searchScopeType: "all" | "page" | "board";
+  searchScopeId: string;
+  onSearchScopeChange: (type: "all" | "page" | "board", id: string) => void;
+
+  // Creator toggle
   showCreator: boolean;
   onToggleCreator: () => void;
+
+  // Create board (in active page)
   onCreateBoard: () => void;
 };
 
@@ -85,17 +99,12 @@ const LONG_DATE_RE =
   /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\s+at\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/gi;
 
 // ─────────────────────────────────────────────
-// Filing date correction
-// Window: 8:00 AM – 5:00 PM. Outside → next day 8:00 AM.
+// Filing date logic
 // ─────────────────────────────────────────────
 
 interface ParsedDateParts {
-  monthName: string;
-  day: number;
-  year: number;
-  hour12: number;
-  minute: number;
-  meridiem: string;
+  monthName: string; day: number; year: number;
+  hour12: number; minute: number; meridiem: string;
 }
 
 function toMinutesSinceMidnight(parts: ParsedDateParts): number {
@@ -108,73 +117,42 @@ function toMinutesSinceMidnight(parts: ParsedDateParts): number {
 
 function applyFilingDateRule(parts: ParsedDateParts): ParsedDateParts {
   const mins  = toMinutesSinceMidnight(parts);
-  const OPEN  = 8 * 60;   // 480
-  const CLOSE = 17 * 60;  // 1020
-
+  const OPEN  = 8 * 60;
+  const CLOSE = 17 * 60;
   if (mins >= OPEN && mins <= CLOSE) return parts;
 
   let newDay   = parts.day + 1;
   let newMonth = MONTH_TO_NUM[parts.monthName.toLowerCase()];
   let newYear  = parts.year;
-
   if (newDay > daysInMonth(newMonth, newYear)) {
-    newDay = 1;
-    newMonth += 1;
+    newDay = 1; newMonth += 1;
     if (newMonth > 12) { newMonth = 1; newYear += 1; }
   }
-
-  return {
-    monthName: MONTH_NAMES[newMonth - 1].toLowerCase(),
-    day: newDay,
-    year: newYear,
-    hour12: 8,
-    minute: 0,
-    meridiem: "am",
-  };
+  return { monthName: MONTH_NAMES[newMonth - 1].toLowerCase(), day: newDay, year: newYear, hour12: 8, minute: 0, meridiem: "am" };
 }
-
-// ─────────────────────────────────────────────
-// Combined pipeline: filing correction → short format + initials
-//
-// This is what the single "Valid Filing Date" toggle runs.
-// 1. Parse the long-form date.
-// 2. Correct if after-hours.
-// 3. Output as MM/DD/YY AT H:MMAM/PM INITIALS
-// ─────────────────────────────────────────────
 
 function applyValidFilingConvert(input: string, initials: string): string | null {
   let matched = false;
-
   const result = input.replace(
     LONG_DATE_RE,
     (_match, monthStr, dayStr, yearStr, hourStr, minStr, merStr) => {
       matched = true;
-
       const parts: ParsedDateParts = {
-        monthName: monthStr.toLowerCase(),
-        day:       parseInt(dayStr, 10),
-        year:      parseInt(yearStr, 10),
-        hour12:    parseInt(hourStr, 10),
-        minute:    parseInt(minStr, 10),
-        meridiem:  merStr.toLowerCase(),
+        monthName: monthStr.toLowerCase(), day: parseInt(dayStr, 10),
+        year: parseInt(yearStr, 10), hour12: parseInt(hourStr, 10),
+        minute: parseInt(minStr, 10), meridiem: merStr.toLowerCase(),
       };
-
       const corrected = applyFilingDateRule(parts);
-
-      const month  = MONTH_TO_PAD[corrected.monthName];
-      const day    = String(corrected.day).padStart(2, "0");
-      const year   = String(corrected.year).slice(-2);
-      const hour   = String(corrected.hour12);
-      const min    = String(corrected.minute).padStart(2, "0");
-      const mer    = corrected.meridiem.toUpperCase();
-
-      const trimmedInits = initials.trim().toUpperCase();
-      const suffix = trimmedInits ? ` ${trimmedInits}` : "";
-
+      const month = MONTH_TO_PAD[corrected.monthName];
+      const day   = String(corrected.day).padStart(2, "0");
+      const year  = String(corrected.year).slice(-2);
+      const hour  = String(corrected.hour12);
+      const min   = String(corrected.minute).padStart(2, "0");
+      const mer   = corrected.meridiem.toUpperCase();
+      const suffix = initials.trim().toUpperCase() ? ` ${initials.trim().toUpperCase()}` : "";
       return `${month}/${day}/${year} AT ${hour}:${min}${mer}${suffix}`;
     }
   );
-
   return matched ? result : null;
 }
 
@@ -183,15 +161,10 @@ function applyValidFilingConvert(input: string, initials: string): string | null
 // ─────────────────────────────────────────────
 
 export default function SearchBar({
-  search,
-  onSearchChange,
-  darkMode,
-  boards,
-  searchScopeBoardId,
-  onSearchScopeChange,
-  showCreator,
-  onToggleCreator,
-  onCreateBoard,
+  search, onSearchChange, darkMode,
+  pages, boards,
+  searchScopeType, searchScopeId, onSearchScopeChange,
+  showCreator, onToggleCreator, onCreateBoard,
 }: SearchBarProps) {
   const [autoCaps,    setAutoCaps]    = useState(false);
   const [trimTo100,   setTrimTo100]   = useState(false);
@@ -220,24 +193,12 @@ export default function SearchBar({
     copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
   }
 
-  // Transform pipeline:
-  //  1. Valid Filing Date (correct + convert to short form + initials)
-  //  2. Auto CAPS
-  //  3. Trim to 100
-  function applyTransforms(
-    raw: string,
-    caps: boolean,
-    trim: boolean,
-    filing: boolean,
-    inits: string,
-  ): string {
+  function applyTransforms(raw: string, caps: boolean, trim: boolean, filing: boolean, inits: string): string {
     let result = raw;
-
     if (filing) {
       const converted = applyValidFilingConvert(result, inits);
       if (converted !== null) result = converted;
     }
-
     if (caps) result = result.toUpperCase();
     if (trim) result = result.slice(0, 100);
     return result;
@@ -250,9 +211,7 @@ export default function SearchBar({
     else setCopied(false);
   }
 
-  function reapply(overrides: Partial<{
-    caps: boolean; trim: boolean; filing: boolean; inits: string;
-  }> = {}) {
+  function reapply(overrides: Partial<{ caps: boolean; trim: boolean; filing: boolean; inits: string }> = {}) {
     if (!search) return;
     const transformed = applyTransforms(
       search,
@@ -287,6 +246,34 @@ export default function SearchBar({
 
   function handleClear() { onSearchChange(""); setCopied(false); }
 
+  // ── Scope dropdown: build a flat option list ──
+  // Structure: All pages → [Page: X → boards in X...] for each page
+  function handleScopeChange(value: string) {
+    if (value === "all") { onSearchScopeChange("all", "all"); return; }
+    if (value.startsWith("page:")) { onSearchScopeChange("page", value.slice(5)); return; }
+    if (value.startsWith("board:")) { onSearchScopeChange("board", value.slice(6)); return; }
+  }
+
+  function scopeValue(): string {
+    if (searchScopeType === "all")   return "all";
+    if (searchScopeType === "page")  return `page:${searchScopeId}`;
+    return `board:${searchScopeId}`;
+  }
+
+  // Sort pages: Home first, rest alpha
+  const sortedPages = [
+    ...pages.filter((p) => p.id === "home-page"),
+    ...pages.filter((p) => p.id !== "home-page").sort((a, b) => a.name.localeCompare(b.name)),
+  ];
+
+  function boardsForPage(pageId: string): Board[] {
+    const pb = boards.filter((b) => b.pageId === pageId);
+    return [
+      ...pb.filter((b) => b.id === "home-board"),
+      ...pb.filter((b) => b.id !== "home-board").sort((a, b) => a.name.localeCompare(b.name)),
+    ];
+  }
+
   const checkboxLabelStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: "0.35rem",
     fontSize: "0.8rem", color: textColor, cursor: "pointer", userSelect: "none",
@@ -296,22 +283,17 @@ export default function SearchBar({
   };
 
   return (
-    <section
-      style={{
-        width: "100%",
-        padding: "0.75rem 1rem",
-        borderTopStyle: "solid", borderBottomStyle: "solid",
-        borderLeftStyle: "solid", borderRightStyle: "solid",
-        borderTopWidth: "2px",   borderBottomWidth: "2px",
-        borderLeftWidth: "1px",  borderRightWidth: "1px",
-        borderTopColor: accent,  borderBottomColor: accent,
-        borderLeftColor: borderBase, borderRightColor: borderBase,
-        borderRadius: "10px",
-        backgroundColor: cardBg,
-        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.16)",
-        marginBottom: "0.5rem",
-      }}
-    >
+    <section style={{
+      width: "100%", padding: "0.75rem 1rem",
+      borderTopStyle: "solid", borderBottomStyle: "solid",
+      borderLeftStyle: "solid", borderRightStyle: "solid",
+      borderTopWidth: "2px", borderBottomWidth: "2px",
+      borderLeftWidth: "1px", borderRightWidth: "1px",
+      borderTopColor: accent, borderBottomColor: accent,
+      borderLeftColor: borderBase, borderRightColor: borderBase,
+      borderRadius: "10px", backgroundColor: cardBg,
+      boxShadow: "0 4px 12px rgba(15, 23, 42, 0.16)", marginBottom: "0.5rem",
+    }}>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
 
         {/* ── Top row ── */}
@@ -321,122 +303,63 @@ export default function SearchBar({
               Search templates
             </label>
             {copied && (
-              <span style={{
-                fontSize: "0.75rem", fontWeight: 500,
-                color: darkMode ? "#4ade80" : "#15803d",
-                backgroundColor: darkMode ? "#052e16" : "#f0fdf4",
-                border: `1px solid ${darkMode ? "#166534" : "#bbf7d0"}`,
-                borderRadius: "999px", padding: "0.1rem 0.55rem",
-              }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, color: darkMode ? "#4ade80" : "#15803d", backgroundColor: darkMode ? "#052e16" : "#f0fdf4", border: `1px solid ${darkMode ? "#166534" : "#bbf7d0"}`, borderRadius: "999px", padding: "0.1rem 0.55rem" }}>
                 ✓ Copied
               </span>
             )}
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <button type="button" onClick={onCreateBoard} style={{
-              padding: "0.35rem 0.9rem", borderRadius: "999px",
-              border: "1px solid #3b82f6",
-              backgroundColor: darkMode ? "#020617" : "#eff6ff",
-              color: darkMode ? "#bfdbfe" : "#1d4ed8",
-              fontSize: "0.8rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap",
-            }}>
+            <button type="button" onClick={onCreateBoard} style={{ padding: "0.35rem 0.9rem", borderRadius: "999px", border: "1px solid #3b82f6", backgroundColor: darkMode ? "#020617" : "#eff6ff", color: darkMode ? "#bfdbfe" : "#1d4ed8", fontSize: "0.8rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
               + Create Board
             </button>
-            <button type="button" onClick={onToggleCreator} style={{
-              padding: "0.35rem 0.9rem", borderRadius: "999px",
-              border: `1px solid ${showCreator ? accent : darkMode ? "#4b5563" : "#d1d5db"}`,
-              backgroundColor: showCreator ? (darkMode ? "#1e3a5f" : "#eff6ff") : (darkMode ? "#020617" : "white"),
-              color: showCreator ? (darkMode ? "#93c5fd" : "#1d4ed8") : textColor,
-              fontSize: "0.8rem", fontWeight: 500, cursor: "pointer",
-              whiteSpace: "nowrap", transition: "all 0.15s ease",
-            }}>
+            <button type="button" onClick={onToggleCreator} style={{ padding: "0.35rem 0.9rem", borderRadius: "999px", border: `1px solid ${showCreator ? accent : darkMode ? "#4b5563" : "#d1d5db"}`, backgroundColor: showCreator ? (darkMode ? "#1e3a5f" : "#eff6ff") : (darkMode ? "#020617" : "white"), color: showCreator ? (darkMode ? "#93c5fd" : "#1d4ed8") : textColor, fontSize: "0.8rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s ease" }}>
               {showCreator ? "✕ Close Creator" : "+ New Template"}
             </button>
           </div>
         </div>
 
         {/* ── Search input ── */}
-        <input
-          id="search" type="text" value={search}
-          onChange={handleChange} onFocus={(e) => e.target.select()}
-          placeholder="Type to search titles..."
-          style={{
-            flex: 1, padding: "0.5rem 0.75rem", borderRadius: "6px",
-            border: `1px solid ${inputBorder}`, backgroundColor: inputBg, color: textColor,
-          }}
-        />
+        <input id="search" type="text" value={search} onChange={handleChange}
+          onFocus={(e) => e.target.select()} placeholder="Type to search titles..."
+          style={{ flex: 1, padding: "0.5rem 0.75rem", borderRadius: "6px", border: `1px solid ${inputBorder}`, backgroundColor: inputBg, color: textColor }} />
 
         {/* ── Toggles row ── */}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          flexWrap: "wrap", gap: "0.5rem", paddingTop: "0.1rem",
-        }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", paddingTop: "0.1rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
 
-            {/* Auto CAPS */}
             <label style={checkboxLabelStyle}>
-              <input type="checkbox" checked={autoCaps}
-                onChange={(e) => handleAutoCapsToggle(e.target.checked)} style={checkboxStyle} />
+              <input type="checkbox" checked={autoCaps} onChange={(e) => handleAutoCapsToggle(e.target.checked)} style={checkboxStyle} />
               <span>Auto CAPS</span>
               {autoCaps && <span style={{ fontSize: "0.7rem", color: accent }}>on</span>}
             </label>
 
-            {/* Trim to 100 */}
             <label style={checkboxLabelStyle}>
-              <input type="checkbox" checked={trimTo100}
-                onChange={(e) => handleTrimToggle(e.target.checked)} style={checkboxStyle} />
+              <input type="checkbox" checked={trimTo100} onChange={(e) => handleTrimToggle(e.target.checked)} style={checkboxStyle} />
               <span>Trim to 100</span>
               {trimTo100 && <span style={{ fontSize: "0.7rem", color: accent }}>on</span>}
             </label>
 
-            {/* ── Valid Filing Date (single toggle: corrects + converts) ── */}
             <label style={{ ...checkboxLabelStyle, fontWeight: validFiling ? 600 : 400 }}>
-              <input
-                type="checkbox"
-                checked={validFiling}
-                onChange={(e) => handleValidFilingToggle(e.target.checked)}
-                style={{ ...checkboxStyle, accentColor: amber }}
-              />
+              <input type="checkbox" checked={validFiling} onChange={(e) => handleValidFilingToggle(e.target.checked)} style={{ ...checkboxStyle, accentColor: amber }} />
               <span style={{ color: validFiling ? amber : textColor }}>Valid Filing Date</span>
               {validFiling && <span style={{ fontSize: "0.7rem", color: amber, fontWeight: 700 }}>on</span>}
             </label>
 
-            {/* Initials + Convert Now — only visible when Valid Filing Date is on */}
             {validFiling && (
               <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
                 <span style={{ fontSize: "0.8rem", color: mutedText }}>Initials:</span>
-                <input
-                  type="text" value={initials} maxLength={6}
+                <input type="text" value={initials} maxLength={6}
                   onChange={(e) => setInitials(e.target.value.toUpperCase())}
-                  onBlur={handleInitialsBlur}
-                  placeholder="JO"
-                  title="Appended to converted date"
-                  style={{
-                    width: "3.2rem", padding: "0.2rem 0.4rem", borderRadius: "5px",
-                    border: `1px solid ${amber}`,
-                    backgroundColor: inputBg, color: textColor,
-                    fontSize: "0.8rem", fontFamily: "monospace",
-                    letterSpacing: "0.05em", textTransform: "uppercase",
-                    outline: `2px solid ${amber}22`,
-                    transition: "border-color 0.15s ease",
-                  }}
-                />
+                  onBlur={handleInitialsBlur} placeholder="JO"
+                  style={{ width: "3.2rem", padding: "0.2rem 0.4rem", borderRadius: "5px", border: `1px solid ${amber}`, backgroundColor: inputBg, color: textColor, fontSize: "0.8rem", fontFamily: "monospace", letterSpacing: "0.05em", textTransform: "uppercase", outline: `2px solid ${amber}22` }} />
                 <button type="button" onClick={handleConvertNow}
-                  title="Paste from clipboard, apply Valid Filing Date, copy result"
-                  style={{
-                    padding: "0.2rem 0.55rem", borderRadius: "999px",
-                    border: `1px solid ${amber}`,
-                    backgroundColor: darkMode ? "#1c1000" : "#fffbeb",
-                    color: darkMode ? "#fcd34d" : "#b45309",
-                    fontSize: "0.72rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
-                  }}>
+                  style={{ padding: "0.2rem 0.55rem", borderRadius: "999px", border: `1px solid ${amber}`, backgroundColor: darkMode ? "#1c1000" : "#fffbeb", color: darkMode ? "#fcd34d" : "#b45309", fontSize: "0.72rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
                   ⇄ Convert Now
                 </button>
               </div>
             )}
 
-            {/* Char count */}
             {trimTo100 && search.length > 0 && (
               <span style={{ fontSize: "0.75rem", color: search.length >= 100 ? "#b91c1c" : mutedText }}>
                 {search.length}/100
@@ -444,21 +367,13 @@ export default function SearchBar({
             )}
           </div>
 
-          {/* Clear */}
           {search.trim().length > 0 && (
-            <button type="button" onClick={handleClear} style={{
-              padding: "0.3rem 0.85rem", borderRadius: "999px",
-              border: "1px solid #fca5a5",
-              backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5",
-              color: darkMode ? "#fca5a5" : "#dc2626",
-              fontSize: "0.78rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap",
-            }}>
+            <button type="button" onClick={handleClear} style={{ padding: "0.3rem 0.85rem", borderRadius: "999px", border: "1px solid #fca5a5", backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5", color: darkMode ? "#fca5a5" : "#dc2626", fontSize: "0.78rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
               Clear Search Bar
             </button>
           )}
         </div>
 
-        {/* ── Hint line ── */}
         {validFiling && (
           <p style={{ margin: 0, fontSize: "0.72rem", color: mutedText, fontStyle: "italic", paddingTop: "0.1rem" }}>
             After-hours dates → next day 8:00AM • converts to MM/DD/YY AT H:MMAM {initials.trim().toUpperCase() || "??"} — auto-copied
@@ -468,18 +383,25 @@ export default function SearchBar({
         {/* ── Search scope ── */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", color: mutedText }}>
           <span>Search in:</span>
-          <select value={searchScopeBoardId} onChange={(e) => onSearchScopeChange(e.target.value)} style={{
-            padding: "0.25rem 0.6rem", borderRadius: "999px",
-            border: "1px solid #9ca3af",
-            backgroundColor: darkMode ? "#020617" : "white",
-            color: textColor, fontSize: "0.8rem",
-          }}>
-            <option value="all">All boards</option>
-            {boards.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
+          <select value={scopeValue()} onChange={(e) => handleScopeChange(e.target.value)}
+            style={{ padding: "0.25rem 0.6rem", borderRadius: "999px", border: "1px solid #9ca3af", backgroundColor: darkMode ? "#020617" : "white", color: textColor, fontSize: "0.8rem" }}>
+            <option value="all">All pages</option>
+            {sortedPages.map((page) => {
+              const pageBoards = boardsForPage(page.id);
+              return (
+                <optgroup key={page.id} label={`── ${page.name} ──`}>
+                  <option value={`page:${page.id}`}>All of {page.name}</option>
+                  {pageBoards.map((b) => (
+                    <option key={b.id} value={`board:${b.id}`}>
+                      &nbsp;&nbsp;{b.name}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
           </select>
         </div>
+
       </div>
     </section>
   );
