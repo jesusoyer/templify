@@ -30,6 +30,9 @@ type SearchBarProps = {
   // Create board (in active page)
   onCreateBoard: () => void;
 
+  // Create workflow (opens the workflow naming modal, lives in page.tsx)
+  onCreateWorkflow: () => void;
+
   // Tells parent whether the search box should be treated as a
   // date-conversion tool right now (true) instead of a template filter.
   onDateModeChange?: (active: boolean) => void;
@@ -181,7 +184,7 @@ export default function SearchBar({
   search, onSearchChange, darkMode,
   pages, boards,
   searchScopeType, searchScopeId, onSearchScopeChange,
-  showCreator, onToggleCreator, onCreateBoard,
+  showCreator, onToggleCreator, onCreateBoard, onCreateWorkflow,
   onDateModeChange,
 }: SearchBarProps) {
   const [autoCaps,    setAutoCaps]    = useState(false);
@@ -433,6 +436,9 @@ export default function SearchBar({
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <button type="button" onClick={onCreateBoard} style={{ padding: "0.35rem 0.9rem", borderRadius: "999px", border: "1px solid #3b82f6", backgroundColor: darkMode ? "#020617" : "#eff6ff", color: darkMode ? "#bfdbfe" : "#1d4ed8", fontSize: "0.8rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
               + Create Board
+            </button>
+            <button type="button" onClick={onCreateWorkflow} style={{ padding: "0.35rem 0.9rem", borderRadius: "999px", border: "1px solid #7c3aed", backgroundColor: darkMode ? "#020617" : "#f5f3ff", color: darkMode ? "#c4b5fd" : "#6d28d9", fontSize: "0.8rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
+              + Add Workflow
             </button>
             <button type="button" onClick={onToggleCreator} style={{ padding: "0.35rem 0.9rem", borderRadius: "999px", border: `1px solid ${showCreator ? accent : darkMode ? "#4b5563" : "#d1d5db"}`, backgroundColor: showCreator ? (darkMode ? "#1e3a5f" : "#eff6ff") : (darkMode ? "#020617" : "white"), color: showCreator ? (darkMode ? "#93c5fd" : "#1d4ed8") : textColor, fontSize: "0.8rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s ease" }}>
               {showCreator ? "✕ Close Creator" : "+ New Template"}

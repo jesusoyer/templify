@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import TemplateCreator from "./components/TemplateCreator";
 import SearchBar from "./components/SearchBar";
 import TemplatesGrid from "./components/TemplatesGrid";
+import WorkflowPanel, { type Workflow, type WorkflowStep } from "./components/WorkflowPanel";
 
 // ─────────────────────────────────────────────
 // Types
@@ -175,6 +176,10 @@ export default function ClipboardTemplatesPage() {
   const [body,  setBody]  = useState("");
   const [search, setSearch] = useState("");
   const [dateConverterActive, setDateConverterActive] = useState(false); // true while Valid Filing Date toggle is on in SearchBar
+  const [workflows, setWorkflows] = useState<Workflow[]>([]); // independent of Pages/Boards — its own section
+  const [showCreateWorkflowModal, setShowCreateWorkflowModal] = useState(false);
+  const [newWorkflowName, setNewWorkflowName] = useState("");
+  const [builderOpenWorkflowId, setBuilderOpenWorkflowId] = useState<string | null>(null);
 
   const [editingId,    setEditingId]    = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -260,9 +265,17 @@ export default function ClipboardTemplatesPage() {
     } catch {}
   }, []);
 
+  useEffect(() => {
+    try {
+      const sw = localStorage.getItem("templify-workflows");
+      if (sw) setWorkflows(JSON.parse(sw) as Workflow[]);
+    } catch {}
+  }, []);
+
   useEffect(() => { try { localStorage.setItem("clipboard-pages",     JSON.stringify(pages));     } catch {} }, [pages]);
   useEffect(() => { try { localStorage.setItem("clipboard-boards",    JSON.stringify(boards));    } catch {} }, [boards]);
   useEffect(() => { try { localStorage.setItem("clipboard-templates", JSON.stringify(templates)); } catch {} }, [templates]);
+  useEffect(() => { try { localStorage.setItem("templify-workflows",  JSON.stringify(workflows)); } catch {} }, [workflows]);
   useEffect(() => { if (activeBoardId) try { localStorage.setItem("clipboard-active-board", activeBoardId); } catch {} }, [activeBoardId]);
 
   useEffect(() => { if (!recentlyAddedId) return; const t = setTimeout(() => setRecentlyAddedId(null), 1000); return () => clearTimeout(t); }, [recentlyAddedId]);
@@ -431,6 +444,57 @@ export default function ClipboardTemplatesPage() {
         return t;
       });
     });
+  }
+
+  // ─────────────────────────────────────────────
+  // Workflows
+  // ─────────────────────────────────────────────
+
+  function handleOpenCreateWorkflowModal() { setNewWorkflowName(""); setShowCreateWorkflowModal(true); }
+  function handleCancelCreateWorkflow()    { setNewWorkflowName(""); setShowCreateWorkflowModal(false); }
+
+  function handleConfirmCreateWorkflow() {
+    const name = newWorkflowName.trim();
+    if (!name) { alert("Please enter a workflow name."); return; }
+
+    const rootStep: WorkflowStep = {
+      id: "step-" + Date.now().toString(36),
+      title: "",
+      instruction: "",
+      branches: [],
+    };
+    const newWorkflow: Workflow = {
+      id: "wf-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name,
+      title: `${name} Workflow`,
+      steps: { [rootStep.id]: rootStep },
+      rootStepId: rootStep.id,
+      resumeEnabled: false,
+      lastVisitedStepId: null,
+      pinned: false,
+      createdAt: Date.now(),
+    };
+    setWorkflows((prev) => [...prev, newWorkflow]);
+    setShowCreateWorkflowModal(false);
+    setNewWorkflowName("");
+    setBuilderOpenWorkflowId(newWorkflow.id); // jump straight into the builder
+  }
+
+  function handleUpdateWorkflow(updated: Workflow) {
+    setWorkflows((prev) => prev.map((w) => w.id === updated.id ? updated : w));
+  }
+
+  function handleDeleteWorkflow(id: string) {
+    setWorkflows((prev) => prev.filter((w) => w.id !== id));
+    if (builderOpenWorkflowId === id) setBuilderOpenWorkflowId(null);
+  }
+
+  function handlePinWorkflow(id: string) {
+    setWorkflows((prev) => prev.map((w) => w.id === id ? { ...w, pinned: true } : w));
+  }
+
+  function handleUnpinWorkflow(id: string) {
+    setWorkflows((prev) => prev.map((w) => w.id === id ? { ...w, pinned: false } : w));
   }
 
   // ─────────────────────────────────────────────
@@ -903,6 +967,18 @@ export default function ClipboardTemplatesPage() {
         </div>
       </div>
 
+      {/* ── WORKFLOWS ── */}
+      <WorkflowPanel
+        workflows={workflows}
+        darkMode={darkMode}
+        onUpdateWorkflow={handleUpdateWorkflow}
+        onDeleteWorkflow={handleDeleteWorkflow}
+        onPinWorkflow={handlePinWorkflow}
+        onUnpinWorkflow={handleUnpinWorkflow}
+        builderOpenWorkflowId={builderOpenWorkflowId}
+        onOpenBuilder={setBuilderOpenWorkflowId}
+      />
+
       {/* ── SEARCH BAR ── */}
       <SearchBar
         search={search} onSearchChange={setSearch}
@@ -913,6 +989,7 @@ export default function ClipboardTemplatesPage() {
         showCreator={showCreator}
         onToggleCreator={() => setShowCreator((p) => !p)}
         onCreateBoard={handleOpenCreateBoardModal}
+        onCreateWorkflow={handleOpenCreateWorkflowModal}
         onDateModeChange={setDateConverterActive}
       />
 
@@ -1012,6 +1089,30 @@ export default function ClipboardTemplatesPage() {
                 style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", backgroundColor: darkMode ? "#374151" : "#f9fafb", color: mainText, cursor: "pointer", fontWeight: 500 }}>Cancel</button>
               <button type="button" onClick={handleCreateBoard}
                 style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: "none", backgroundColor: accent, color: "white", cursor: "pointer", fontWeight: 500 }}>Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Workflow */}
+      {showCreateWorkflowModal && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}
+          onClick={handleCancelCreateWorkflow}>
+          <div onClick={(e) => e.stopPropagation()} style={modalBoxStyle}>
+            <h2 style={{ fontSize: "1.4rem", fontWeight: "bold", marginBottom: "0.5rem", color: mainText, marginTop: 0 }}>New Workflow</h2>
+            <p style={{ fontSize: "0.85rem", color: darkMode ? "#9ca3af" : "#6b7280", marginTop: 0, marginBottom: "0.75rem" }}>
+              Give your workflow a name. We'll call it "<strong>{newWorkflowName.trim() || "Name"} Workflow</strong>".
+            </p>
+            <input type="text" placeholder="e.g. New Hire Setup" value={newWorkflowName}
+              onChange={(e) => setNewWorkflowName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleConfirmCreateWorkflow(); }}
+              autoFocus
+              style={{ width: "100%", padding: "0.5rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", backgroundColor: darkMode ? "#374151" : "white", color: mainText, marginBottom: "1rem", boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+              <button type="button" onClick={handleCancelCreateWorkflow}
+                style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", backgroundColor: darkMode ? "#374151" : "#f9fafb", color: mainText, cursor: "pointer", fontWeight: 500 }}>Cancel</button>
+              <button type="button" onClick={handleConfirmCreateWorkflow}
+                style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: "none", backgroundColor: "#7c3aed", color: "white", cursor: "pointer", fontWeight: 500 }}>Create & Build</button>
             </div>
           </div>
         </div>
