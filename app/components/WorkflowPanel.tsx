@@ -163,6 +163,7 @@ export default function WorkflowPanel({
   const [confirmDeleteName, setConfirmDeleteName] = useState("");
 
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [showTreeView, setShowTreeView] = useState(false); // tree overlay while a workflow is running
 
   const cardBg      = darkMode ? "#020617" : "white";
   const borderBase  = darkMode ? "#1e293b" : "#bfdbfe";
@@ -241,7 +242,7 @@ export default function WorkflowPanel({
     setRunnerHistory([]);
   }
 
-  function exitRunner() { setRunnerWorkflowId(null); setRunnerCurrentStepId(null); setRunnerHistory([]); }
+  function exitRunner() { setRunnerWorkflowId(null); setRunnerCurrentStepId(null); setRunnerHistory([]); setShowTreeView(false); }
 
   const runnerWorkflow = workflows.find((w) => w.id === runnerWorkflowId) ?? null;
   const runnerStep = runnerWorkflow && runnerCurrentStepId ? runnerWorkflow.steps[runnerCurrentStepId] : null;
@@ -266,6 +267,21 @@ export default function WorkflowPanel({
     setRunnerCurrentStepId(prevStepId);
     if (runnerWorkflow) persistProgress(runnerWorkflow, prevStepId);
   }
+
+  // Jump to any step from the tree view — records the jump in history so Back still works
+  function jumpToStep(stepId: string) {
+    if (!runnerWorkflow || !runnerCurrentStepId) return;
+    if (stepId === runnerCurrentStepId) { setShowTreeView(false); return; }
+    setRunnerHistory((prev) => [...prev, runnerCurrentStepId]);
+    setRunnerCurrentStepId(stepId);
+    persistProgress(runnerWorkflow, stepId);
+    setShowTreeView(false);
+  }
+
+  const runnerTreeLayout = useMemo(
+    () => (runnerWorkflow && showTreeView) ? computeLayout(runnerWorkflow) : null,
+    [runnerWorkflow, showTreeView]
+  );
 
   function requestDelete(workflow: Workflow) { setConfirmDeleteId(workflow.id); setConfirmDeleteName(workflow.title); }
   function confirmDelete() { if (confirmDeleteId) onDeleteWorkflow(confirmDeleteId); setConfirmDeleteId(null); setConfirmDeleteName(""); }
@@ -575,10 +591,17 @@ export default function WorkflowPanel({
               <span style={{ fontSize: "0.75rem", fontWeight: 600, color: violet, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                 {runnerWorkflow.title}
               </span>
-              <button type="button" onClick={exitRunner}
-                style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: "1px solid #fca5a5", backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5", color: darkMode ? "#fca5a5" : "#dc2626", fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}>
-                ✕ Exit workflow
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <button type="button" onClick={() => setShowTreeView(true)}
+                  title="See the full workflow tree and jump to any step"
+                  style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${accent}`, backgroundColor: darkMode ? "#0f172a" : "#eff6ff", color: darkMode ? "#93c5fd" : "#1d4ed8", fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}>
+                  🗺 View workflow
+                </button>
+                <button type="button" onClick={exitRunner}
+                  style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: "1px solid #fca5a5", backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5", color: darkMode ? "#fca5a5" : "#dc2626", fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}>
+                  ✕ Exit workflow
+                </button>
+              </div>
             </div>
 
             <h2 style={{ fontSize: "1.3rem", fontWeight: "bold", margin: "0.5rem 0 0.5rem", color: textColor }}>
@@ -622,6 +645,125 @@ export default function WorkflowPanel({
                 style={{ padding: "0.4rem 0.9rem", borderRadius: "999px", border: `1px solid ${darkMode ? "#9a3412" : "#d97706"}`, backgroundColor: darkMode ? "#020617" : "white", color: darkMode ? "#fdba74" : "#b45309", fontSize: "0.82rem", cursor: "pointer", fontWeight: 500 }}>
                 ✎ Edit workflow
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════ Tree view overlay (running workflow) — click any step to jump there ════════ */}
+      {runnerWorkflow && runnerTreeLayout && (
+        <div
+          style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 95, padding: "1rem" }}
+          onClick={(e) => { e.stopPropagation(); setShowTreeView(false); }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ ...modalBoxStyle, width: "95%", maxWidth: "70rem", height: "80vh", display: "flex", flexDirection: "column", padding: 0, overflow: "hidden" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "1rem 1.25rem", borderBottom: `1px solid ${borderBase}`, flexWrap: "wrap", gap: "0.5rem" }}>
+              <div>
+                <h2 style={{ fontSize: "1.1rem", fontWeight: "bold", margin: 0, color: textColor }}>{runnerWorkflow.title}</h2>
+                <p style={{ margin: "0.15rem 0 0", fontSize: "0.78rem", color: mutedText }}>Click any step to jump straight to it.</p>
+              </div>
+              <button type="button" onClick={() => setShowTreeView(false)}
+                style={{ padding: "0.3rem 0.8rem", borderRadius: "999px", border: "1px solid #fca5a5", backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5", color: darkMode ? "#fca5a5" : "#dc2626", fontSize: "0.8rem", cursor: "pointer", fontWeight: 500 }}>
+                ✕ Close
+              </button>
+            </div>
+
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ flex: 1, overflow: "auto", backgroundColor: canvasBg, position: "relative" }}
+            >
+              <svg width={runnerTreeLayout.width} height={runnerTreeLayout.height} style={{ display: "block" }}>
+                {runnerTreeLayout.nodes.map((node) => {
+                  if (!node.parentId) return null;
+                  const parent = runnerTreeLayout.nodes.find((n) => n.step.id === node.parentId);
+                  if (!parent) return null;
+                  const x1 = parent.x + BOX_W;
+                  const y1 = parent.y + BOX_H / 2;
+                  const x2 = node.x;
+                  const y2 = node.y + BOX_H / 2;
+                  const midX = x1 + (x2 - x1) / 2;
+                  return (
+                    <g key={`runner-edge-${node.step.id}`}>
+                      <path d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`} fill="none" stroke={lineColor} strokeWidth={1.5} />
+                      <polygon points={`${x2-7},${y2-4} ${x2},${y2} ${x2-7},${y2+4}`} fill={lineColor} />
+                      {node.branchLabel && (
+                        <g>
+                          <rect x={midX - 45} y={(y1+y2)/2 - 10} width={90} height={18} rx={9} fill={canvasBg} stroke={lineColor} strokeWidth={1} />
+                          <text x={midX} y={(y1+y2)/2 + 3} textAnchor="middle" fontSize="10" fill={mutedText} fontFamily="system-ui, sans-serif">
+                            {node.branchLabel.length > 16 ? node.branchLabel.slice(0, 15) + "…" : node.branchLabel}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+
+                {runnerTreeLayout.rejoinEdges.map((edge, idx) => {
+                  const fromNode = runnerTreeLayout.nodes.find((n) => n.step.id === edge.fromStepId);
+                  const toNode   = runnerTreeLayout.nodes.find((n) => n.step.id === edge.toStepId);
+                  if (!fromNode || !toNode) return null;
+                  const x1 = fromNode.x + BOX_W;
+                  const y1 = fromNode.y + BOX_H / 2;
+                  const targetIsAhead = toNode.x >= fromNode.x;
+                  const x2 = targetIsAhead ? toNode.x : toNode.x + BOX_W / 2;
+                  const y2 = targetIsAhead ? toNode.y + BOX_H / 2 : toNode.y;
+                  const arcY = Math.max(fromNode.y, toNode.y) + BOX_H + 36 + (idx % 3) * 14;
+                  return (
+                    <g key={`runner-rejoin-${edge.fromStepId}-${edge.toStepId}-${idx}`}>
+                      <path d={`M ${x1} ${y1} C ${x1 + 30} ${arcY}, ${x2 - 30} ${arcY}, ${x2} ${y2}`} fill="none" stroke={amber} strokeWidth={1.5} strokeDasharray="5,4" />
+                      <polygon points={`${x2-7},${y2-4} ${x2},${y2} ${x2-7},${y2+4}`} fill={amber} transform={targetIsAhead ? "" : `rotate(90 ${x2} ${y2})`} />
+                      <g>
+                        <rect x={(x1+x2)/2 - 50} y={arcY - 9} width={100} height={18} rx={9} fill={canvasBg} stroke={amber} strokeWidth={1} />
+                        <text x={(x1+x2)/2} y={arcY + 4} textAnchor="middle" fontSize="9.5" fill={amber} fontFamily="system-ui, sans-serif" fontWeight={600}>
+                          ↩ {edge.branchLabel.length > 12 ? edge.branchLabel.slice(0, 11) + "…" : edge.branchLabel}
+                        </text>
+                      </g>
+                    </g>
+                  );
+                })}
+
+                {runnerTreeLayout.nodes.map((node) => {
+                  const isRoot = node.step.id === runnerWorkflow.rootStepId;
+                  const isEnd = node.step.branches.length === 0;
+                  const isCurrent = node.step.id === runnerCurrentStepId;
+                  const boxColor = isRoot ? accent : isEnd ? green : violet;
+                  return (
+                    <foreignObject key={node.step.id} x={node.x} y={node.y} width={BOX_W} height={BOX_H}>
+                      <div
+                        onClick={(e) => { e.stopPropagation(); jumpToStep(node.step.id); }}
+                        style={{
+                          width: "100%", height: "100%", borderRadius: "8px",
+                          border: `2px solid ${isCurrent ? amber : boxColor}`,
+                          backgroundColor: isCurrent ? (darkMode ? "#1c1000" : "#fffbeb") : (darkMode ? "#0f172a" : "white"),
+                          padding: "0.5rem 0.6rem", cursor: "pointer",
+                          display: "flex", flexDirection: "column", justifyContent: "space-between",
+                          boxShadow: isCurrent ? `0 0 0 2px ${amber}55` : "0 2px 6px rgba(0,0,0,0.08)",
+                          boxSizing: "border-box", fontFamily: "system-ui, sans-serif",
+                        }}
+                      >
+                        <div>
+                          <span style={{ fontSize: "0.65rem", fontWeight: 700, color: isCurrent ? amber : boxColor, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                            {isCurrent ? "● You are here" : isRoot ? "Start" : isEnd ? "End point" : "Step"}
+                          </span>
+                          <div style={{ fontSize: "0.85rem", fontWeight: 600, color: textColor, marginTop: "0.15rem", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any }}>
+                            {node.step.title || "(untitled step)"}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "0.7rem", color: mutedText }}>
+                          {isCurrent ? "Click elsewhere to jump" : "Click to jump here"}
+                        </div>
+                      </div>
+                    </foreignObject>
+                  );
+                })}
+              </svg>
+            </div>
+
+            <div onClick={(e) => e.stopPropagation()} style={{ borderTop: `1px solid ${borderBase}`, padding: "0.6rem 1.25rem", fontSize: "0.78rem", color: mutedText, backgroundColor: darkMode ? "#111827" : "#f9fafb" }}>
+              Jumping to a step is added to your Back history, so ← Back still retraces your path afterward.
             </div>
           </div>
         </div>
