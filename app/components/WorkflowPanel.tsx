@@ -165,6 +165,10 @@ export default function WorkflowPanel({
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [showTreeView, setShowTreeView] = useState(false); // tree overlay while a workflow is running
 
+  // ── Collapse state: whole section, plus per-row minimize ──
+  const [sectionCollapsed, setSectionCollapsed] = useState(false);
+  const [collapsedRowById, setCollapsedRowById] = useState<Record<string, boolean>>({});
+
   const cardBg      = darkMode ? "#020617" : "white";
   const borderBase  = darkMode ? "#1e293b" : "#bfdbfe";
   const accent      = "#3b82f6";
@@ -301,62 +305,85 @@ export default function WorkflowPanel({
         borderRadius: "10px", backgroundColor: cardBg,
         boxShadow: "0 4px 12px rgba(15, 23, 42, 0.16)", marginBottom: "0.5rem",
       }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.6rem", flexWrap: "wrap", gap: "0.5rem" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: sectionCollapsed ? 0 : "0.6rem", flexWrap: "wrap", gap: "0.5rem" }}>
           <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, color: textColor, display: "flex", alignItems: "center", gap: "0.4rem" }}>
             🧭 Workflows
+            {sectionCollapsed && orderedWorkflows.length > 0 && (
+              <span style={{ fontSize: "0.72rem", fontWeight: 500, color: mutedText, backgroundColor: darkMode ? "#1e293b" : "#e5e7eb", borderRadius: "999px", padding: "0.1rem 0.55rem" }}>
+                {orderedWorkflows.length}
+              </span>
+            )}
           </h2>
+          <button type="button" onClick={() => setSectionCollapsed((p) => !p)}
+            style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`, backgroundColor: darkMode ? "#020617" : "white", color: darkMode ? "#e5e7eb" : "#111827", fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}>
+            {sectionCollapsed ? "Expand section" : "Minimize section"}
+          </button>
         </div>
 
-        {orderedWorkflows.length === 0 ? (
-          <p style={{ margin: 0, fontSize: "0.85rem", color: mutedText, fontStyle: "italic" }}>
-            No workflows yet. Use "+ Add Workflow" next to Create Board to turn a scattered process into clear, step-by-step guidance.
-          </p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {orderedWorkflows.map((wf) => {
-              const stepCount = Object.keys(wf.steps).length;
-              const isPinned = !!wf.pinned;
-              return (
-                <div key={wf.id} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem",
-                  padding: "0.55rem 0.75rem", borderRadius: "8px", flexWrap: "wrap",
-                  border: `1px solid ${isPinned ? amber : borderBase}`,
-                  backgroundColor: darkMode ? "#0f172a" : "#fafafa",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-                    {isPinned && <span style={{ fontSize: "0.75rem", color: amber }}>📌</span>}
-                    <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                      <span style={{ fontWeight: 600, fontSize: "0.9rem", color: textColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {wf.title}
-                      </span>
-                      <span style={{ fontSize: "0.72rem", color: mutedText }}>
-                        {stepCount} step{stepCount !== 1 ? "s" : ""}{wf.resumeEnabled ? " • resume enabled" : ""}
-                      </span>
+        {!sectionCollapsed && (
+          orderedWorkflows.length === 0 ? (
+            <p style={{ margin: 0, fontSize: "0.85rem", color: mutedText, fontStyle: "italic" }}>
+              No workflows yet. Use "+ Add Workflow" next to Create Board to turn a scattered process into clear, step-by-step guidance.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {orderedWorkflows.map((wf) => {
+                const stepCount = Object.keys(wf.steps).length;
+                const isPinned = !!wf.pinned;
+                const rowCollapsed = !!collapsedRowById[wf.id];
+                return (
+                  <div key={wf.id} style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem",
+                    padding: rowCollapsed ? "0.35rem 0.65rem" : "0.55rem 0.75rem", borderRadius: "8px", flexWrap: "wrap",
+                    border: `1px solid ${isPinned ? amber : borderBase}`,
+                    backgroundColor: darkMode ? "#0f172a" : "#fafafa",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
+                      {isPinned && <span style={{ fontSize: "0.75rem", color: amber }}>📌</span>}
+                      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                        <span style={{ fontWeight: 600, fontSize: "0.9rem", color: textColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {wf.title}
+                        </span>
+                        {!rowCollapsed && (
+                          <span style={{ fontSize: "0.72rem", color: mutedText }}>
+                            {stepCount} step{stepCount !== 1 ? "s" : ""}{wf.resumeEnabled ? " • resume enabled" : ""}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => setCollapsedRowById((prev) => ({ ...prev, [wf.id]: !prev[wf.id] }))}
+                        title={rowCollapsed ? "Expand" : "Minimize"}
+                        style={{ padding: "0.2rem 0.6rem", borderRadius: "999px", border: `1px solid ${darkMode ? "#6b7280" : "#9ca3af"}`, backgroundColor: darkMode ? "#020617" : "white", color: textColor, fontSize: "0.72rem", fontWeight: 500, cursor: "pointer" }}>
+                        {rowCollapsed ? "Expand" : "Minimize"}
+                      </button>
+                      {!rowCollapsed && (
+                        <>
+                          <button type="button" onClick={() => startRunner(wf)}
+                            style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${accent}`, backgroundColor: darkMode ? "#0f172a" : "#eff6ff", color: darkMode ? "#93c5fd" : "#1d4ed8", fontSize: "0.75rem", fontWeight: 500, cursor: "pointer" }}>
+                            ▶ Start
+                          </button>
+                          <button type="button" onClick={() => onOpenBuilder(wf.id)}
+                            style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${darkMode ? "#9a3412" : "#d97706"}`, backgroundColor: darkMode ? "#020617" : "white", color: darkMode ? "#fdba74" : "#b45309", fontSize: "0.75rem", cursor: "pointer" }}>
+                            Edit
+                          </button>
+                          <button type="button" onClick={() => isPinned ? onUnpinWorkflow(wf.id) : onPinWorkflow(wf.id)}
+                            style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${isPinned ? amber : (darkMode ? "#4b5563" : "#d1d5db")}`, backgroundColor: darkMode ? "#020617" : "white", color: isPinned ? "#ea580c" : (darkMode ? "#e5e7eb" : "#111827"), fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}>
+                            {isPinned ? "Unpin" : "Pin"}
+                          </button>
+                          <button type="button" onClick={() => requestDelete(wf)} title="Delete workflow"
+                            style={{ padding: "0.2rem 0.45rem", borderRadius: "999px", border: "none", backgroundColor: "transparent", color: "#b91c1c", fontWeight: "bold", fontSize: "0.95rem", cursor: "pointer" }}>
+                            ✕
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
-                    <button type="button" onClick={() => startRunner(wf)}
-                      style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${accent}`, backgroundColor: darkMode ? "#0f172a" : "#eff6ff", color: darkMode ? "#93c5fd" : "#1d4ed8", fontSize: "0.75rem", fontWeight: 500, cursor: "pointer" }}>
-                      ▶ Start
-                    </button>
-                    <button type="button" onClick={() => onOpenBuilder(wf.id)}
-                      style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${darkMode ? "#9a3412" : "#d97706"}`, backgroundColor: darkMode ? "#020617" : "white", color: darkMode ? "#fdba74" : "#b45309", fontSize: "0.75rem", cursor: "pointer" }}>
-                      Edit
-                    </button>
-                    <button type="button" onClick={() => isPinned ? onUnpinWorkflow(wf.id) : onPinWorkflow(wf.id)}
-                      style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${isPinned ? amber : (darkMode ? "#4b5563" : "#d1d5db")}`, backgroundColor: darkMode ? "#020617" : "white", color: isPinned ? "#ea580c" : (darkMode ? "#e5e7eb" : "#111827"), fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}>
-                      {isPinned ? "Unpin" : "Pin"}
-                    </button>
-                    <button type="button" onClick={() => requestDelete(wf)} title="Delete workflow"
-                      style={{ padding: "0.2rem 0.45rem", borderRadius: "999px", border: "none", backgroundColor: "transparent", color: "#b91c1c", fontWeight: "bold", fontSize: "0.95rem", cursor: "pointer" }}>
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )
         )}
       </section>
 

@@ -137,6 +137,13 @@ function mergeImport(
 // Helpers
 // ─────────────────────────────────────────────
 
+// Body is now an HTML string (rich text). A contentEditable div can report
+// itself as having content like "<br>" or "<div><br></div>" even when
+// visually empty, so strip tags before checking for real text content.
+function isBodyEmpty(html: string): boolean {
+  return html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim().length === 0;
+}
+
 function nextOrderForBoard(templates: Template[], boardId: string): number {
   const bt = templates.filter((t) => t.boardId === boardId && !t.pinned);
   if (!bt.length) return 0;
@@ -365,12 +372,11 @@ export default function ClipboardTemplatesPage() {
   function handleAddTemplateToActiveBoard(e: React.FormEvent) {
     e.preventDefault();
     const trimmedTitle = title.trim();
-    const trimmedBody  = body.trim();
-    if (!trimmedTitle || !trimmedBody) { alert("Title and body are required."); return; }
+    if (!trimmedTitle || isBodyEmpty(body)) { alert("Title and body are required."); return; }
     const targetBoardId = activeBoardId || HOME_BOARD_ID;
     const newTemplate: Template = {
       id:        Date.now().toString() + Math.random().toString(16),
-      title:     trimmedTitle, body: trimmedBody,
+      title:     trimmedTitle, body: body,
       pinned: false, pinnedAt: null,
       boardId:   targetBoardId,
       createdAt: Date.now(),
@@ -384,10 +390,9 @@ export default function ClipboardTemplatesPage() {
 
   function handleCreatorAddToBoardClick() {
     const trimmedTitle = title.trim();
-    const trimmedBody  = body.trim();
-    if (!trimmedTitle || !trimmedBody) { alert("Title and body are required."); return; }
+    if (!trimmedTitle || isBodyEmpty(body)) { alert("Title and body are required."); return; }
     setPendingNewTemplateTitle(trimmedTitle);
-    setPendingNewTemplateBody(trimmedBody);
+    setPendingNewTemplateBody(body);
     setAssignSource("new");
     setAssignTemplateId(null);
     setAssignBoardId(activeBoardId || boards[0]?.id || HOME_BOARD_ID);
@@ -400,24 +405,23 @@ export default function ClipboardTemplatesPage() {
     if (editingId === id) { setEditingId(null); setEditingTitle(""); setEditingBody(""); }
   }
 
-  async function handleCopy(text: string) {
-    try {
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
-      else {
-        const ta = document.createElement("textarea");
-        ta.value = text; document.body.appendChild(ta); ta.select();
-        document.execCommand("copy"); document.body.removeChild(ta);
-      }
-    } catch (err) { console.error(err); }
+  // NOTE: TemplatesGrid performs the actual rich (HTML + plain-text) clipboard
+  // write itself via the Clipboard API. This handler is a fallback/no-op hook
+  // kept for compatibility — it intentionally does NOT call writeText with
+  // raw HTML, since that would overwrite the correctly-formatted clipboard
+  // content with literal "<b>...</b>" tags as visible text.
+  async function handleCopy(_html: string) {
+    // Intentionally left as a no-op now that TemplatesGrid owns the copy.
+    // Kept as a prop so future hooks (analytics, toasts, etc.) have a place to live.
   }
 
   function handleStartEdit(template: Template) { setEditingId(template.id); setEditingTitle(template.title); setEditingBody(template.body); }
   function handleCancelEdit() { setEditingId(null); setEditingTitle(""); setEditingBody(""); }
 
   function handleSaveEdit(id: string) {
-    const t = editingTitle.trim(); const b = editingBody.trim();
-    if (!t || !b) { alert("Title and body are required."); return; }
-    setTemplates((prev) => prev.map((tmpl) => tmpl.id === id ? { ...tmpl, title: t, body: b } : tmpl));
+    const t = editingTitle.trim();
+    if (!t || isBodyEmpty(editingBody)) { alert("Title and body are required."); return; }
+    setTemplates((prev) => prev.map((tmpl) => tmpl.id === id ? { ...tmpl, title: t, body: editingBody } : tmpl));
     setEditingId(null); setEditingTitle(""); setEditingBody("");
   }
 
@@ -516,11 +520,11 @@ export default function ClipboardTemplatesPage() {
     if (assignSource === "existing" && assignTemplateId) {
       setTemplates((prev) => prev.map((t) => t.id === assignTemplateId ? { ...t, boardId } : t));
     } else if (assignSource === "new") {
-      const t = pendingNewTemplateTitle.trim(); const b = pendingNewTemplateBody.trim();
-      if (!t || !b) { alert("Title and body are required."); return; }
+      const t = pendingNewTemplateTitle.trim();
+      if (!t || isBodyEmpty(pendingNewTemplateBody)) { alert("Title and body are required."); return; }
       const newTemplate: Template = {
         id: Date.now().toString() + Math.random().toString(16),
-        title: t, body: b, pinned: false, pinnedAt: null,
+        title: t, body: pendingNewTemplateBody, pinned: false, pinnedAt: null,
         boardId, createdAt: Date.now(),
         order: nextOrderForBoard(templates, boardId),
       };
@@ -599,6 +603,20 @@ export default function ClipboardTemplatesPage() {
       return doc.splitTextToSize(text, maxWidth) as string[];
     }
 
+    // Converts the rich-text HTML body into plain lines suitable for the PDF:
+    // <li> becomes a "• " bulleted line, <br>/<p>/<div> become line breaks,
+    // and any remaining tags (b/i/u/font/span/etc.) are stripped since the
+    // PDF renderer here draws plain text only.
+    function htmlToPlainTextForPdf(html: string): string {
+      let text = html;
+      text = text.replace(/<li[^>]*>/gi, "• ").replace(/<\/li>/gi, "\n");
+      text = text.replace(/<\/(p|div)>/gi, "\n").replace(/<(p|div)[^>]*>/gi, "");
+      text = text.replace(/<br\s*\/?>/gi, "\n");
+      text = text.replace(/<[^>]+>/g, ""); // strip remaining tags (b, i, u, font, span, ul, ol...)
+      text = text.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">");
+      return text.replace(/\n{3,}/g, "\n\n").trim();
+    }
+
     // ── Cover header ──
     doc.setFillColor(...ACCENT);
     doc.rect(0, 0, PAGE_W, 72, "F");
@@ -665,7 +683,7 @@ export default function ClipboardTemplatesPage() {
         // ── Template cards ──
         for (const tmpl of boardTemplates) {
           const titleLines = wrapText(tmpl.title, COL_W - 20, 10);
-          const bodyLines  = wrapText(tmpl.body  || "", COL_W - 20, 8.5);
+          const bodyLines  = wrapText(htmlToPlainTextForPdf(tmpl.body || ""), COL_W - 20, 8.5);
           const isPinned   = !!tmpl.pinned;
 
           // Estimate card height

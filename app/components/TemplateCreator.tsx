@@ -1,16 +1,26 @@
-import React from "react";
+import React, { useRef, useEffect } from "react";
 
 type TemplateCreatorProps = {
   title: string;
-  body: string;
+  body: string;                 // now stores HTML (bold/italic/underline/color/bullets)
   onTitleChange: (value: string) => void;
   onBodyChange: (value: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onAddToBoardClick: () => void;
   darkMode: boolean;
   currentBoardName: string;
-  onHide: () => void; // closes the creator
+  onHide: () => void;
 };
+
+const TEXT_COLORS = [
+  { label: "Default", value: "" },
+  { label: "Red",     value: "#dc2626" },
+  { label: "Orange",  value: "#ea580c" },
+  { label: "Yellow",  value: "#ca8a04" },
+  { label: "Green",   value: "#16a34a" },
+  { label: "Blue",    value: "#2563eb" },
+  { label: "Purple",  value: "#7c3aed" },
+];
 
 export default function TemplateCreator({
   title,
@@ -29,6 +39,49 @@ export default function TemplateCreator({
   const textColor = darkMode ? "#e5e7eb" : "#111827";
   const inputBg = darkMode ? "#020617" : "white";
   const inputBorder = darkMode ? "#475569" : "#ccc";
+  const toolbarBg = darkMode ? "#0f172a" : "#f3f4f6";
+
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  // Keep the contentEditable div's actual DOM in sync when `body` changes
+  // from outside (e.g. clearing the form after submit) without fighting
+  // the user's cursor while they're actively typing.
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== body) {
+      editorRef.current.innerHTML = body;
+    }
+  }, [body]);
+
+  const savedRangeRef = useRef<Range | null>(null);
+
+  function handleEditorInput() {
+    if (editorRef.current) onBodyChange(editorRef.current.innerHTML);
+  }
+
+  // Remember the current text selection while the editor has focus, so we
+  // can restore it after the user interacts with a toolbar control (like the
+  // color <select>) that would otherwise steal focus away from the editor.
+  function saveSelection() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+    }
+  }
+
+  function restoreSelection() {
+    const sel = window.getSelection();
+    if (sel && savedRangeRef.current) {
+      sel.removeAllRanges();
+      sel.addRange(savedRangeRef.current);
+    }
+  }
+
+  function applyFormat(command: string, value?: string) {
+    editorRef.current?.focus();
+    restoreSelection();
+    document.execCommand(command, false, value);
+    handleEditorInput();
+  }
 
   const trimmedBoardName = currentBoardName?.trim() || "Home";
   const isHome =
@@ -38,6 +91,18 @@ export default function TemplateCreator({
   const primaryButtonLabel = isHome
     ? "Save to Default Home Board"
     : `Save to ${trimmedBoardName}`;
+
+  const toolbarBtnStyle: React.CSSProperties = {
+    padding: "0.3rem 0.55rem",
+    borderRadius: "5px",
+    border: `1px solid ${inputBorder}`,
+    backgroundColor: darkMode ? "#1e293b" : "white",
+    color: textColor,
+    fontSize: "0.85rem",
+    cursor: "pointer",
+    lineHeight: 1,
+    minWidth: "2rem",
+  };
 
   return (
     <section
@@ -123,24 +188,72 @@ export default function TemplateCreator({
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-          <label htmlFor="body" style={{ fontWeight: 500, color: textColor }}>
+          <label style={{ fontWeight: 500, color: textColor }}>
             Template body
           </label>
-          <textarea
-            id="body"
-            rows={5}
-            value={body}
-            onChange={(e) => onBodyChange(e.target.value)}
-            placeholder="Write the text you want to reuse..."
+
+          {/* ── Formatting toolbar ── */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: "0.3rem", flexWrap: "wrap",
+            padding: "0.4rem", borderRadius: "6px 6px 0 0",
+            border: `1px solid ${inputBorder}`, borderBottom: "none",
+            backgroundColor: toolbarBg,
+          }}>
+            <button type="button" title="Bold" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("bold")}
+              style={{ ...toolbarBtnStyle, fontWeight: 800 }}>B</button>
+            <button type="button" title="Italic" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("italic")}
+              style={{ ...toolbarBtnStyle, fontStyle: "italic", fontWeight: 600 }}>I</button>
+            <button type="button" title="Underline" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("underline")}
+              style={{ ...toolbarBtnStyle, textDecoration: "underline", fontWeight: 600 }}>U</button>
+            <button type="button" title="Bullet list" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("insertUnorderedList")}
+              style={toolbarBtnStyle}>• List</button>
+
+            <span style={{ width: "1px", height: "1.4rem", backgroundColor: inputBorder, margin: "0 0.15rem" }} />
+
+            <select
+              defaultValue=""
+              onChange={(e) => { if (e.target.value) applyFormat("foreColor", e.target.value); e.target.value = ""; }}
+              title="Text color"
+              style={{ ...toolbarBtnStyle, cursor: "pointer", paddingRight: "0.3rem" }}
+            >
+              <option value="" disabled>Color</option>
+              {TEXT_COLORS.map((c) => (
+                <option key={c.label} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+
+            <button type="button" title="Clear formatting" onMouseDown={(e) => e.preventDefault()} onClick={() => applyFormat("removeFormat")}
+              style={{ ...toolbarBtnStyle, fontSize: "0.75rem", color: darkMode ? "#9ca3af" : "#6b7280" }}>Clear</button>
+          </div>
+
+          {/* ── Rich text editor ── */}
+          <div
+            ref={editorRef}
+            contentEditable
+            onInput={handleEditorInput}
+            onMouseUp={saveSelection}
+            onKeyUp={saveSelection}
+            data-placeholder="Write the text you want to reuse..."
+            suppressContentEditableWarning
             style={{
+              minHeight: "7rem",
               padding: "0.5rem 0.75rem",
-              borderRadius: "6px",
+              borderRadius: "0 0 6px 6px",
               border: `1px solid ${inputBorder}`,
               backgroundColor: inputBg,
               color: textColor,
-              resize: "vertical",
+              fontSize: "0.9rem",
+              lineHeight: 1.5,
+              overflowY: "auto",
             }}
           />
+          <style>{`
+            [contenteditable][data-placeholder]:empty:before {
+              content: attr(data-placeholder);
+              color: ${darkMode ? "#64748b" : "#9ca3af"};
+              pointer-events: none;
+            }
+          `}</style>
         </div>
 
         {/* Buttons row */}
