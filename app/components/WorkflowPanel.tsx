@@ -77,9 +77,16 @@ type LayoutNode = {
   branchLabel: string | null;
 };
 
-function computeLayout(workflow: Workflow): { nodes: LayoutNode[]; width: number; height: number } {
+type RejoinEdge = {
+  fromStepId: string;
+  toStepId: string;
+  branchLabel: string;
+};
+
+function computeLayout(workflow: Workflow): { nodes: LayoutNode[]; width: number; height: number; rejoinEdges: RejoinEdge[] } {
   const visited = new Set<string>();
   const allNodes: LayoutNode[] = [];
+  const rejoinEdges: RejoinEdge[] = [];
   let rowCounter = 0;
 
   function visit(stepId: string, col: number, parentId: string | null, branchLabel: string | null) {
@@ -97,7 +104,14 @@ function computeLayout(workflow: Workflow): { nodes: LayoutNode[]; width: number
     } else {
       const startRow = rowCounter;
       step.branches.forEach((b) => {
-        if (b.nextStepId) visit(b.nextStepId, col + 1, stepId, b.label || "(unlabeled)");
+        if (!b.nextStepId) return;
+        if (visited.has(b.nextStepId)) {
+          // Points back to a step already drawn elsewhere in the tree —
+          // record as a rejoin edge instead of trying to draw a new box.
+          rejoinEdges.push({ fromStepId: stepId, toStepId: b.nextStepId, branchLabel: b.label || "(unlabeled)" });
+          return;
+        }
+        visit(b.nextStepId, col + 1, stepId, b.label || "(unlabeled)");
       });
       if (rowCounter === startRow) { node.row = rowCounter; rowCounter += 1; }
       else {
@@ -122,9 +136,9 @@ function computeLayout(workflow: Workflow): { nodes: LayoutNode[]; width: number
   });
 
   const width  = PADDING * 2 + (maxCol + 1) * BOX_W + maxCol * COL_GAP;
-  const height = PADDING * 2 + (maxRow + 1) * BOX_H + maxRow * ROW_GAP;
+  const height = PADDING * 2 + (maxRow + 1) * BOX_H + maxRow * ROW_GAP + (rejoinEdges.length > 0 ? 80 : 0);
 
-  return { nodes: allNodes, width: Math.max(width, 400), height: Math.max(height, 200) };
+  return { nodes: allNodes, width: Math.max(width, 400), height: Math.max(height, 200), rejoinEdges };
 }
 
 // ─────────────────────────────────────────────
@@ -372,7 +386,10 @@ export default function WorkflowPanel({
             </div>
 
             {/* Flowchart canvas */}
-            <div style={{ flex: 1, overflow: "auto", backgroundColor: canvasBg, position: "relative" }}>
+            <div
+              onClick={(e) => { e.stopPropagation(); setEditingStepId(null); }}
+              style={{ flex: 1, overflow: "auto", backgroundColor: canvasBg, position: "relative" }}
+            >
               <svg width={layout.width} height={layout.height} style={{ display: "block" }}>
                 {layout.nodes.map((node) => {
                   if (!node.parentId) return null;
@@ -399,6 +416,38 @@ export default function WorkflowPanel({
                   );
                 })}
 
+                {/* Rejoin edges — branches that loop back to an already-drawn step */}
+                {layout.rejoinEdges.map((edge, idx) => {
+                  const fromNode = layout.nodes.find((n) => n.step.id === edge.fromStepId);
+                  const toNode   = layout.nodes.find((n) => n.step.id === edge.toStepId);
+                  if (!fromNode || !toNode) return null;
+
+                  const x1 = fromNode.x + BOX_W;
+                  const y1 = fromNode.y + BOX_H / 2;
+                  // Route into the target's left or top edge depending on relative position
+                  const targetIsAhead = toNode.x >= fromNode.x;
+                  const x2 = targetIsAhead ? toNode.x : toNode.x + BOX_W / 2;
+                  const y2 = targetIsAhead ? toNode.y + BOX_H / 2 : toNode.y;
+                  // Arc below everything to avoid crossing through other boxes
+                  const arcY = Math.max(fromNode.y, toNode.y) + BOX_H + 36 + (idx % 3) * 14;
+
+                  return (
+                    <g key={`rejoin-${edge.fromStepId}-${edge.toStepId}-${idx}`}>
+                      <path
+                        d={`M ${x1} ${y1} C ${x1 + 30} ${arcY}, ${x2 - 30} ${arcY}, ${x2} ${y2}`}
+                        fill="none" stroke={amber} strokeWidth={1.5} strokeDasharray="5,4"
+                      />
+                      <polygon points={`${x2-7},${y2-4} ${x2},${y2} ${x2-7},${y2+4}`} fill={amber} transform={targetIsAhead ? "" : `rotate(90 ${x2} ${y2})`} />
+                      <g>
+                        <rect x={(x1+x2)/2 - 50} y={arcY - 9} width={100} height={18} rx={9} fill={canvasBg} stroke={amber} strokeWidth={1} />
+                        <text x={(x1+x2)/2} y={arcY + 4} textAnchor="middle" fontSize="9.5" fill={amber} fontFamily="system-ui, sans-serif" fontWeight={600}>
+                          ↩ {edge.branchLabel.length > 12 ? edge.branchLabel.slice(0, 11) + "…" : edge.branchLabel}
+                        </text>
+                      </g>
+                    </g>
+                  );
+                })}
+
                 {layout.nodes.map((node) => {
                   const isRoot = node.step.id === builderWorkflow.rootStepId;
                   const isEnd = node.step.branches.length === 0;
@@ -406,7 +455,7 @@ export default function WorkflowPanel({
                   return (
                     <foreignObject key={node.step.id} x={node.x} y={node.y} width={BOX_W} height={BOX_H}>
                       <div
-                        onClick={() => setEditingStepId(node.step.id)}
+                        onClick={(e) => { e.stopPropagation(); setEditingStepId(node.step.id); }}
                         style={{
                           width: "100%", height: "100%", borderRadius: "8px",
                           border: `2px solid ${editingStepId === node.step.id ? amber : boxColor}`,
@@ -437,7 +486,10 @@ export default function WorkflowPanel({
 
             {/* Inline step editor */}
             {editingStep && (
-              <div style={{ borderTop: `1px solid ${borderBase}`, padding: "1rem 1.25rem", maxHeight: "40%", overflowY: "auto", backgroundColor: darkMode ? "#111827" : "#f9fafb" }}>
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{ borderTop: `1px solid ${borderBase}`, padding: "1rem 1.25rem", maxHeight: "40%", overflowY: "auto", backgroundColor: darkMode ? "#111827" : "#f9fafb" }}
+              >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
                   <span style={{ fontSize: "0.72rem", fontWeight: 600, color: mutedText, textTransform: "uppercase", letterSpacing: "0.03em" }}>
                     Editing: {editingStep.id === builderWorkflow.rootStepId ? "Start step" : "Step"}
@@ -476,11 +528,14 @@ export default function WorkflowPanel({
 
                       <select value={branch.nextStepId ?? "__end__"}
                         onChange={(e) => updateBranch(builderWorkflow, editingStep.id, branch.id, { nextStepId: e.target.value === "__end__" ? null : e.target.value })}
+                        title="Pick an existing step to reconnect this option back into the workflow"
                         style={{ ...inputStyle, flex: "1 1 150px", fontSize: "0.8rem" }}>
                         <option value="__end__">— Ends workflow —</option>
-                        {Object.values(builderWorkflow.steps).filter((s) => s.id !== editingStep.id).map((s) => (
-                          <option key={s.id} value={s.id}>{s.title || "(untitled step)"}</option>
-                        ))}
+                        <optgroup label="↩ Reconnect to existing step">
+                          {Object.values(builderWorkflow.steps).filter((s) => s.id !== editingStep.id).map((s) => (
+                            <option key={s.id} value={s.id}>{s.title || "(untitled step)"}</option>
+                          ))}
+                        </optgroup>
                       </select>
 
                       <button type="button" onClick={() => addNewStepViaBranch(builderWorkflow, editingStep.id, branch.id)}
@@ -504,8 +559,8 @@ export default function WorkflowPanel({
             )}
 
             {!editingStep && (
-              <div style={{ borderTop: `1px solid ${borderBase}`, padding: "0.65rem 1.25rem", fontSize: "0.78rem", color: mutedText, backgroundColor: darkMode ? "#111827" : "#f9fafb" }}>
-                Click any box above to edit its title, instructions, and options.
+              <div onClick={(e) => e.stopPropagation()} style={{ borderTop: `1px solid ${borderBase}`, padding: "0.65rem 1.25rem", fontSize: "0.78rem", color: mutedText, backgroundColor: darkMode ? "#111827" : "#f9fafb" }}>
+                Click any box above to edit its title, instructions, and options. Dashed amber lines (↩) show an option reconnecting back into an earlier step.
               </div>
             )}
           </div>
