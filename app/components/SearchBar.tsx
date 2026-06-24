@@ -29,6 +29,10 @@ type SearchBarProps = {
 
   // Create board (in active page)
   onCreateBoard: () => void;
+
+  // Tells parent whether the search box should be treated as a
+  // date-conversion tool right now (true) instead of a template filter.
+  onDateModeChange?: (active: boolean) => void;
 };
 
 // ─────────────────────────────────────────────
@@ -77,16 +81,6 @@ const MONTH_TO_PAD: Record<string, string> = {
   july:"07",august:"08",september:"09",october:"10",november:"11",december:"12",
 };
 
-function ordinalSuffix(day: number): string {
-  if (day >= 11 && day <= 13) return `${day}th`;
-  switch (day % 10) {
-    case 1: return `${day}st`;
-    case 2: return `${day}nd`;
-    case 3: return `${day}rd`;
-    default: return `${day}th`;
-  }
-}
-
 function daysInMonth(month: number, year: number): number {
   return new Date(year, month, 0).getDate();
 }
@@ -96,7 +90,15 @@ function daysInMonth(month: number, year: number): number {
 // ─────────────────────────────────────────────
 
 const LONG_DATE_RE =
-  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\s+at\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/gi;
+  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/gi;
+
+// Non-global version for single full-string match checks (auto-convert detection)
+const LONG_DATE_RE_SINGLE =
+  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/i;
+
+// Matches the trailing initials token in an already-converted string, e.g.
+// "01/15/2026 AT 1:00PM JO" → captures "JO". Works with 0+ trailing letters.
+const TRAILING_INITIALS_RE = /^(.*?AT\s+\d{1,2}:\d{2}(?:AM|PM))(\s*)([A-Za-z]*)$/;
 
 // ─────────────────────────────────────────────
 // Filing date logic
@@ -145,7 +147,7 @@ function applyValidFilingConvert(input: string, initials: string): string | null
       const corrected = applyFilingDateRule(parts);
       const month = MONTH_TO_PAD[corrected.monthName];
       const day   = String(corrected.day).padStart(2, "0");
-      const year  = String(corrected.year).slice(-2);
+      const year  = String(corrected.year);
       const hour  = String(corrected.hour12);
       const min   = String(corrected.minute).padStart(2, "0");
       const mer   = corrected.meridiem.toUpperCase();
@@ -154,6 +156,21 @@ function applyValidFilingConvert(input: string, initials: string): string | null
     }
   );
   return matched ? result : null;
+}
+
+function formatNowConverted(initials: string): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day   = String(now.getDate()).padStart(2, "0");
+  const year  = String(now.getFullYear());
+
+  let hour12 = now.getHours() % 12;
+  if (hour12 === 0) hour12 = 12;
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const mer = now.getHours() >= 12 ? "PM" : "AM";
+
+  const suffix = initials.trim().toUpperCase() ? ` ${initials.trim().toUpperCase()}` : "";
+  return `${month}/${day}/${year} AT ${hour12}:${min}${mer}${suffix}`;
 }
 
 // ─────────────────────────────────────────────
@@ -165,6 +182,7 @@ export default function SearchBar({
   pages, boards,
   searchScopeType, searchScopeId, onSearchScopeChange,
   showCreator, onToggleCreator, onCreateBoard,
+  onDateModeChange,
 }: SearchBarProps) {
   const [autoCaps,    setAutoCaps]    = useState(false);
   const [trimTo100,   setTrimTo100]   = useState(false);
@@ -172,6 +190,11 @@ export default function SearchBar({
   const [initials,    setInitials]    = useState("JO");
   const [copied,      setCopied]      = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Tracks whether the search bar currently holds an *already converted*
+  // string (so we know to keep the trailing initials token in sync rather
+  // than re-running conversion on it).
+  const hasConvertedRef = useRef(false);
 
   const cardBg      = darkMode ? "#020617" : "white";
   const borderBase  = darkMode ? "#1d4ed8" : "#bfdbfe";
@@ -185,6 +208,12 @@ export default function SearchBar({
   useEffect(() => {
     return () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); };
   }, []);
+
+  // Tell the parent whether the search bar is currently a date-conversion
+  // tool (Valid Filing Date on) so it can stop filtering templates by it.
+  useEffect(() => {
+    onDateModeChange?.(validFiling);
+  }, [validFiling]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function triggerCopied(text: string) {
     copyToClipboardSafe(text);
@@ -204,21 +233,88 @@ export default function SearchBar({
     return result;
   }
 
+  // ── Main input handler ──
+  // While Valid Filing Date is on:
+  //   1. If the typed text fully matches the long-form date pattern, auto-convert immediately.
+  //   2. If the text already looks like a converted result (MM/DD/YYYY AT H:MM AM/PM ...),
+  //      treat anything after the time as the live initials and mirror it into the
+  //      Initials box as the user types/erases it.
+  //   3. Otherwise just pass the raw text through (still typing the date, not done yet).
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const transformed = applyTransforms(e.target.value, autoCaps, trimTo100, validFiling, initials);
-    onSearchChange(transformed);
-    if (autoCaps || trimTo100 || validFiling) triggerCopied(transformed);
-    else setCopied(false);
+    const raw = e.target.value;
+
+    if (!validFiling) {
+      // Normal mode — only caps/trim apply, no date logic
+      const transformed = applyTransforms(raw, autoCaps, trimTo100, false, initials);
+      onSearchChange(transformed);
+      if (autoCaps || trimTo100) triggerCopied(transformed);
+      else setCopied(false);
+      return;
+    }
+
+    // ── Valid Filing Date is ON ──
+
+    // Case 1: text matches the long-form input pattern → auto-convert now
+    if (LONG_DATE_RE_SINGLE.test(raw)) {
+      const converted = applyValidFilingConvert(raw, initials);
+      if (converted !== null) {
+        let result = converted;
+        if (autoCaps)  result = result.toUpperCase();
+        if (trimTo100) result = result.slice(0, 100);
+        hasConvertedRef.current = true;
+        onSearchChange(result);
+        triggerCopied(result);
+        return;
+      }
+    }
+
+    // Case 2: text already looks converted (has "AT H:MM AM/PM" in it) →
+    // whatever comes after that is the live initials segment. Mirror it.
+    const trailingMatch = raw.match(TRAILING_INITIALS_RE);
+    if (hasConvertedRef.current && trailingMatch) {
+      const typedInitials = trailingMatch[3] ?? "";
+      setInitials(typedInitials.toUpperCase());
+      let result = raw;
+      if (autoCaps)  result = result.toUpperCase();
+      if (trimTo100) result = result.slice(0, 100);
+      onSearchChange(result);
+      return;
+    }
+
+    // Case 3: still typing the long-form date, not matched yet — pass through raw
+    hasConvertedRef.current = false;
+    let result = raw;
+    if (autoCaps)  result = result.toUpperCase();
+    if (trimTo100) result = result.slice(0, 100);
+    onSearchChange(result);
   }
 
   function reapply(overrides: Partial<{ caps: boolean; trim: boolean; filing: boolean; inits: string }> = {}) {
     if (!search) return;
+    const filing = overrides.filing ?? validFiling;
+    const inits  = overrides.inits  ?? initials;
+
+    // If filing mode just turned on and the search box holds a raw long-form
+    // date, convert it immediately.
+    if (filing) {
+      const converted = applyValidFilingConvert(search, inits);
+      if (converted !== null) {
+        let result = converted;
+        if (overrides.caps ?? autoCaps) result = result.toUpperCase();
+        if (overrides.trim ?? trimTo100) result = result.slice(0, 100);
+        hasConvertedRef.current = true;
+        onSearchChange(result);
+        if (result !== search) triggerCopied(result);
+        return;
+      }
+    }
+
     const transformed = applyTransforms(
       search,
-      overrides.caps   ?? autoCaps,
-      overrides.trim   ?? trimTo100,
-      overrides.filing ?? validFiling,
-      overrides.inits  ?? initials,
+      overrides.caps ?? autoCaps,
+      overrides.trim ?? trimTo100,
+      filing,
+      inits,
     );
     onSearchChange(transformed);
     if (transformed !== search) triggerCopied(transformed);
@@ -227,24 +323,49 @@ export default function SearchBar({
   function handleAutoCapsToggle(checked: boolean)    { setAutoCaps(checked);    reapply({ caps: checked }); }
   function handleTrimToggle(checked: boolean)        { setTrimTo100(checked);   reapply({ trim: checked }); }
   function handleValidFilingToggle(checked: boolean) { setValidFiling(checked); reapply({ filing: checked }); }
-  function handleInitialsBlur()                      { reapply(); }
 
-  async function handleConvertNow() {
-    try {
-      const text = await navigator.clipboard.readText();
-      let result = text;
-      if (validFiling) {
-        const converted = applyValidFilingConvert(result, initials);
-        if (converted !== null) result = converted;
-      }
-      if (autoCaps)  result = result.toUpperCase();
-      if (trimTo100) result = result.slice(0, 100);
-      onSearchChange(result);
-      triggerCopied(result);
-    } catch {}
+  // ── Initials box: live-typed here mirrors into the search bar's trailing token ──
+  function handleInitialsLiveChange(rawValue: string) {
+    const upper = rawValue.toUpperCase();
+    setInitials(upper);
+
+    if (!hasConvertedRef.current) return; // nothing converted yet, nothing to splice into
+
+    const trailingMatch = search.match(TRAILING_INITIALS_RE);
+    if (!trailingMatch) return;
+
+    const base = trailingMatch[1]; // e.g. "01/15/2026 AT 1:00PM"
+    const newValue = upper ? `${base} ${upper}` : base;
+    let result = newValue;
+    if (autoCaps)  result = result.toUpperCase();
+    if (trimTo100) result = result.slice(0, 100);
+    onSearchChange(result);
   }
 
-  function handleClear() { onSearchChange(""); setCopied(false); }
+  function handleConvertNow() {
+    // Converts whatever is currently sitting in the search bar — no clipboard read,
+    // so this works every time, not just the first click.
+    let result = search;
+    if (validFiling) {
+      const converted = applyValidFilingConvert(search, initials);
+      if (converted !== null) { result = converted; hasConvertedRef.current = true; }
+    }
+    if (autoCaps)  result = result.toUpperCase();
+    if (trimTo100) result = result.slice(0, 100);
+    onSearchChange(result);
+    triggerCopied(result);
+  }
+
+  function handleUseCurrentDateTime() {
+    let result = formatNowConverted(initials);
+    if (autoCaps)  result = result.toUpperCase();
+    if (trimTo100) result = result.slice(0, 100);
+    hasConvertedRef.current = true;
+    onSearchChange(result);
+    triggerCopied(result);
+  }
+
+  function handleClear() { onSearchChange(""); setCopied(false); hasConvertedRef.current = false; }
 
   // ── Scope dropdown: build a flat option list ──
   // Structure: All pages → [Page: X → boards in X...] for each page
@@ -299,8 +420,8 @@ export default function SearchBar({
         {/* ── Top row ── */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <label htmlFor="search" style={{ fontWeight: 500, color: textColor, fontSize: "0.95rem" }}>
-              Search templates
+            <label htmlFor="search" style={{ fontWeight: 500, color: validFiling ? amber : textColor, fontSize: "0.95rem" }}>
+              {validFiling ? "Date converter (search disabled)" : "Search templates"}
             </label>
             {copied && (
               <span style={{ fontSize: "0.75rem", fontWeight: 500, color: darkMode ? "#4ade80" : "#15803d", backgroundColor: darkMode ? "#052e16" : "#f0fdf4", border: `1px solid ${darkMode ? "#166534" : "#bbf7d0"}`, borderRadius: "999px", padding: "0.1rem 0.55rem" }}>
@@ -321,8 +442,9 @@ export default function SearchBar({
 
         {/* ── Search input ── */}
         <input id="search" type="text" value={search} onChange={handleChange}
-          onFocus={(e) => e.target.select()} placeholder="Type to search titles..."
-          style={{ flex: 1, padding: "0.5rem 0.75rem", borderRadius: "6px", border: `1px solid ${inputBorder}`, backgroundColor: inputBg, color: textColor }} />
+          onFocus={(e) => e.target.select()}
+          placeholder={validFiling ? `Type a date: January 15, 2026 1:00 PM` : "Type to search titles..."}
+          style={{ flex: 1, padding: "0.5rem 0.75rem", borderRadius: "6px", border: `1px solid ${validFiling ? amber : inputBorder}`, backgroundColor: inputBg, color: textColor }} />
 
         {/* ── Toggles row ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", paddingTop: "0.1rem" }}>
@@ -350,12 +472,17 @@ export default function SearchBar({
               <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
                 <span style={{ fontSize: "0.8rem", color: mutedText }}>Initials:</span>
                 <input type="text" value={initials} maxLength={6}
-                  onChange={(e) => setInitials(e.target.value.toUpperCase())}
-                  onBlur={handleInitialsBlur} placeholder="JO"
+                  onChange={(e) => handleInitialsLiveChange(e.target.value)}
+                  placeholder="JO"
                   style={{ width: "3.2rem", padding: "0.2rem 0.4rem", borderRadius: "5px", border: `1px solid ${amber}`, backgroundColor: inputBg, color: textColor, fontSize: "0.8rem", fontFamily: "monospace", letterSpacing: "0.05em", textTransform: "uppercase", outline: `2px solid ${amber}22` }} />
                 <button type="button" onClick={handleConvertNow}
                   style={{ padding: "0.2rem 0.55rem", borderRadius: "999px", border: `1px solid ${amber}`, backgroundColor: darkMode ? "#1c1000" : "#fffbeb", color: darkMode ? "#fcd34d" : "#b45309", fontSize: "0.72rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
                   ⇄ Convert Now
+                </button>
+                <button type="button" onClick={handleUseCurrentDateTime}
+                  title="Insert the current date and time, converted and with initials"
+                  style={{ padding: "0.2rem 0.55rem", borderRadius: "999px", border: `1px solid ${amber}`, backgroundColor: darkMode ? "#1c1000" : "#fffbeb", color: darkMode ? "#fcd34d" : "#b45309", fontSize: "0.72rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  🕐 Current converted date and time
                 </button>
               </div>
             )}
@@ -376,7 +503,7 @@ export default function SearchBar({
 
         {validFiling && (
           <p style={{ margin: 0, fontSize: "0.72rem", color: mutedText, fontStyle: "italic", paddingTop: "0.1rem" }}>
-            After-hours dates → next day 8:00AM • converts to MM/DD/YY AT H:MMAM {initials.trim().toUpperCase() || "??"} — auto-copied
+            Template search is paused. Type "January 15, 2026 1:00 PM" to auto-convert • after-hours → next day 8:00AM • initials sync live with the box below — auto-copied
           </p>
         )}
 

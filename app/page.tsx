@@ -174,6 +174,7 @@ export default function ClipboardTemplatesPage() {
   const [title, setTitle] = useState("");
   const [body,  setBody]  = useState("");
   const [search, setSearch] = useState("");
+  const [dateConverterActive, setDateConverterActive] = useState(false); // true while Valid Filing Date toggle is on in SearchBar
 
   const [editingId,    setEditingId]    = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -729,7 +730,10 @@ export default function ClipboardTemplatesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePageId]);
 
-  const normalizedSearch = search.toLowerCase().trim();
+  // While Valid Filing Date mode is active, the search box is being used as a
+  // date converter, not a template filter — so we ignore its contents here
+  // and just show the active board's templates as if the box were empty.
+  const normalizedSearch = dateConverterActive ? "" : search.toLowerCase().trim();
 
   let filteredTemplates: Template[];
   let gridBoardName: string;
@@ -909,6 +913,7 @@ export default function ClipboardTemplatesPage() {
         showCreator={showCreator}
         onToggleCreator={() => setShowCreator((p) => !p)}
         onCreateBoard={handleOpenCreateBoardModal}
+        onDateModeChange={setDateConverterActive}
       />
 
       {/* ── TEMPLATE CREATOR ── */}
