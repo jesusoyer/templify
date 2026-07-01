@@ -522,12 +522,12 @@ export default function WorkflowPanel({
 
                 {/* Instruction toolbar */}
                 <div style={{ display:"flex", alignItems:"center", gap:"0.25rem", flexWrap:"wrap", padding:"0.3rem", borderRadius:"6px 6px 0 0", border:`1px solid ${inputBorder}`, borderBottom:"none", backgroundColor: darkMode?"#0f172a":"#f3f4f6" }}>
-                  {[["B","bold",{fontWeight:800}],["I","italic",{fontStyle:"italic",fontWeight:600}],["U","underline",{textDecoration:"underline",fontWeight:600}]].map(([label,cmd,sty]) => (
-                    <button key={String(label)} type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>applyInstrFormat(String(cmd))}
-                      style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer", lineHeight:1, ...sty as React.CSSProperties }}>
-                      {label}
-                    </button>
-                  ))}
+                  <button type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>applyInstrFormat("bold")}
+                    style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer", lineHeight:1, fontWeight:800 }}>B</button>
+                  <button type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>applyInstrFormat("italic")}
+                    style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer", lineHeight:1, fontStyle:"italic", fontWeight:600 }}>I</button>
+                  <button type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>applyInstrFormat("underline")}
+                    style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer", lineHeight:1, textDecoration:"underline", fontWeight:600 }}>U</button>
                   <button type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>applyInstrFormat("insertUnorderedList")} style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer" }}>• List</button>
                   <button type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>applyInstrFormat("insertOrderedList")} style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer" }}>1. List</button>
                   <div style={{ position:"relative", display:"inline-block" }}>
