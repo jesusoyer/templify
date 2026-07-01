@@ -32,6 +32,7 @@ type Template = {
   boardId?: string;
   createdAt?: number | null;
   order?: number;
+  colorScheme?: string;       // hex color for card accent borders
 };
 
 // ─────────────────────────────────────────────
@@ -182,7 +183,6 @@ export default function ClipboardTemplatesPage() {
   const [title, setTitle] = useState("");
   const [body,  setBody]  = useState("");
   const [search, setSearch] = useState("");
-  const [dateConverterActive, setDateConverterActive] = useState(false); // true while Valid Filing Date toggle is on in SearchBar
   const [workflows, setWorkflows] = useState<Workflow[]>([]); // independent of Pages/Boards — its own section
   const [showCreateWorkflowModal, setShowCreateWorkflowModal] = useState(false);
   const [newWorkflowName, setNewWorkflowName] = useState("");
@@ -432,22 +432,55 @@ export default function ClipboardTemplatesPage() {
   function handleUnpinTemplate(id: string) {
     setTemplates((prev) => prev.map((t) => t.id === id ? { ...t, pinned: false, pinnedAt: null } : t));
   }
+  function handleUpdateColor(id: string, color: string) {
+    setTemplates((prev) => prev.map((t) => t.id === id ? { ...t, colorScheme: color } : t));
+  }
 
-  function handleReorder(id: string, direction: "left" | "right") {
-    setTemplates((prev) => {
-      const unpinned = [...prev.filter((t) => !t.pinned)].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      const idx = unpinned.findIndex((t) => t.id === id);
-      if (idx === -1) return prev;
-      const swapIdx = direction === "left" ? idx - 1 : idx + 1;
-      if (swapIdx < 0 || swapIdx >= unpinned.length) return prev;
-      const aOrder = unpinned[idx].order ?? idx;
-      const bOrder = unpinned[swapIdx].order ?? swapIdx;
-      return prev.map((t) => {
-        if (t.id === unpinned[idx].id)     return { ...t, order: bOrder };
-        if (t.id === unpinned[swapIdx].id) return { ...t, order: aOrder };
+  function handleReorder(draggedId: string, targetId: string) {
+    // targetId may be a workflow id if dragged across types — handle both cases
+    const draggedTemplate = templates.find((t) => t.id === draggedId);
+    const targetTemplate  = templates.find((t) => t.id === targetId);
+    const targetWorkflow  = workflows.find((w) => w.id === targetId);
+
+    if (draggedTemplate && targetTemplate) {
+      // template → template swap
+      const dragOrder   = draggedTemplate.order ?? 0;
+      const targetOrder = targetTemplate.order  ?? 0;
+      setTemplates((prev) => prev.map((t) => {
+        if (t.id === draggedId) return { ...t, order: targetOrder };
+        if (t.id === targetId)  return { ...t, order: dragOrder };
         return t;
-      });
-    });
+      }));
+    } else if (draggedTemplate && targetWorkflow) {
+      // template dropped onto workflow — swap their order values across lists
+      const dragOrder   = draggedTemplate.order   ?? 0;
+      const targetOrder = targetWorkflow.order    ?? 0;
+      setTemplates((prev) => prev.map((t) => t.id === draggedId ? { ...t, order: targetOrder } : t));
+      setWorkflows((prev) => prev.map((w) => w.id === targetId  ? { ...w, order: dragOrder  } : w));
+    }
+  }
+
+  function handleReorderWorkflow(draggedId: string, targetId: string) {
+    const draggedWorkflow = workflows.find((w) => w.id === draggedId);
+    const targetWorkflow  = workflows.find((w) => w.id === targetId);
+    const targetTemplate  = templates.find((t) => t.id === targetId);
+
+    if (draggedWorkflow && targetWorkflow) {
+      // workflow → workflow swap
+      const dragOrder   = draggedWorkflow.order ?? 0;
+      const targetOrder = targetWorkflow.order  ?? 0;
+      setWorkflows((prev) => prev.map((w) => {
+        if (w.id === draggedId) return { ...w, order: targetOrder };
+        if (w.id === targetId)  return { ...w, order: dragOrder };
+        return w;
+      }));
+    } else if (draggedWorkflow && targetTemplate) {
+      // workflow dropped onto template — swap order across lists
+      const dragOrder   = draggedWorkflow.order ?? 0;
+      const targetOrder = targetTemplate.order  ?? 0;
+      setWorkflows((prev) => prev.map((w) => w.id === draggedId ? { ...w, order: targetOrder } : w));
+      setTemplates((prev) => prev.map((t) => t.id === targetId  ? { ...t, order: dragOrder  } : t));
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -463,10 +496,9 @@ export default function ClipboardTemplatesPage() {
 
     const rootStep: WorkflowStep = {
       id: "step-" + Date.now().toString(36),
-      title: "",
-      instruction: "",
-      branches: [],
+      title: "", instruction: "", branches: [],
     };
+    const targetBoardId = activeBoardId || HOME_BOARD_ID;
     const newWorkflow: Workflow = {
       id: "wf-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name,
@@ -476,12 +508,15 @@ export default function ClipboardTemplatesPage() {
       resumeEnabled: false,
       lastVisitedStepId: null,
       pinned: false,
+      pinnedAt: null,
       createdAt: Date.now(),
+      boardId: targetBoardId,
+      order: nextOrderForBoard(templates, targetBoardId),
     };
     setWorkflows((prev) => [...prev, newWorkflow]);
     setShowCreateWorkflowModal(false);
     setNewWorkflowName("");
-    setBuilderOpenWorkflowId(newWorkflow.id); // jump straight into the builder
+    setBuilderOpenWorkflowId(newWorkflow.id);
   }
 
   function handleUpdateWorkflow(updated: Workflow) {
@@ -494,12 +529,16 @@ export default function ClipboardTemplatesPage() {
   }
 
   function handlePinWorkflow(id: string) {
-    setWorkflows((prev) => prev.map((w) => w.id === id ? { ...w, pinned: true } : w));
+    const now = Date.now();
+    setWorkflows((prev) => prev.map((w) => w.id === id ? { ...w, pinned: true, pinnedAt: w.pinnedAt ?? now } : w));
   }
 
   function handleUnpinWorkflow(id: string) {
-    setWorkflows((prev) => prev.map((w) => w.id === id ? { ...w, pinned: false } : w));
+    setWorkflows((prev) => prev.map((w) => w.id === id ? { ...w, pinned: false, pinnedAt: null } : w));
   }
+
+  // ── Workflow runner state (lifted so TemplatesGrid can start it) ──
+  const [runnerWorkflowId, setRunnerWorkflowId] = useState<string | null>(null);
 
   // ─────────────────────────────────────────────
   // Assign to board
@@ -815,29 +854,34 @@ export default function ClipboardTemplatesPage() {
   // While Valid Filing Date mode is active, the search box is being used as a
   // date converter, not a template filter — so we ignore its contents here
   // and just show the active board's templates as if the box were empty.
-  const normalizedSearch = dateConverterActive ? "" : search.toLowerCase().trim();
+  const normalizedSearch = search.toLowerCase().trim();
 
   let filteredTemplates: Template[];
+  let filteredWorkflows: Workflow[];
   let gridBoardName: string;
   let gridCanDeleteBoard: boolean;
 
   if (normalizedSearch) {
     if (searchScopeType === "all") {
       filteredTemplates = templates.filter((t) => t.title.toLowerCase().includes(normalizedSearch));
+      filteredWorkflows = workflows.filter((w) => w.title.toLowerCase().includes(normalizedSearch));
       gridBoardName = `Search: "${search}" (all pages)`;
     } else if (searchScopeType === "page") {
       const pageBoardIds = new Set(boards.filter((b) => b.pageId === searchScopeId).map((b) => b.id));
       filteredTemplates = templates.filter((t) => pageBoardIds.has(t.boardId ?? "") && t.title.toLowerCase().includes(normalizedSearch));
+      filteredWorkflows = workflows.filter((w) => pageBoardIds.has(w.boardId ?? "") && w.title.toLowerCase().includes(normalizedSearch));
       const pName = pages.find((p) => p.id === searchScopeId)?.name ?? "Page";
       gridBoardName = `Search: "${search}" (${pName})`;
     } else {
       filteredTemplates = templates.filter((t) => t.boardId === searchScopeId && t.title.toLowerCase().includes(normalizedSearch));
+      filteredWorkflows = workflows.filter((w) => w.boardId === searchScopeId && w.title.toLowerCase().includes(normalizedSearch));
       const bName = boards.find((b) => b.id === searchScopeId)?.name ?? "Board";
       gridBoardName = `Search: "${search}" (${bName})`;
     }
     gridCanDeleteBoard = false;
   } else {
     filteredTemplates = templates.filter((t) => t.boardId === activeBoardId);
+    filteredWorkflows = workflows.filter((w) => w.boardId === activeBoardId);
     gridBoardName     = boards.find((b) => b.id === activeBoardId)?.name ?? "Home";
     gridCanDeleteBoard = !!activeBoardId && activeBoardId !== HOME_BOARD_ID;
   }
@@ -876,15 +920,15 @@ export default function ClipboardTemplatesPage() {
   // ─────────────────────────────────────────────
 
   return (
-    <main style={{ minHeight: "100vh", padding: "1rem 2rem", width: "100vw", boxSizing: "border-box", fontFamily: "system-ui, sans-serif", display: "flex", flexDirection: "column", gap: "1rem", backgroundColor: mainBg, color: mainText }}>
+    <main style={{ minHeight: "100vh", padding: "1rem 2rem", width: "100vw", boxSizing: "border-box", fontFamily: "var(--font-sans), system-ui, sans-serif", display: "flex", flexDirection: "column", gap: "1rem", backgroundColor: mainBg, color: mainText }}>
 
       {/* ── TOP HEADER ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
 
         {/* Left: title + page tabs + board selector */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <h1 style={{ fontSize: "2rem", fontWeight: "bold", margin: 0, color: mainText }}>
-            TEMPLIFY — A clipboard on Steroids!
+          <h1 style={{ fontSize: "2.4rem", fontWeight: 300, margin: 0, color: mainText, fontFamily: "var(--font-sans), system-ui, sans-serif", letterSpacing: "0.25em", textTransform: "uppercase" }}>
+            Templify
           </h1>
 
           {/* ── PAGE TABS ── */}
@@ -985,18 +1029,6 @@ export default function ClipboardTemplatesPage() {
         </div>
       </div>
 
-      {/* ── WORKFLOWS ── */}
-      <WorkflowPanel
-        workflows={workflows}
-        darkMode={darkMode}
-        onUpdateWorkflow={handleUpdateWorkflow}
-        onDeleteWorkflow={handleDeleteWorkflow}
-        onPinWorkflow={handlePinWorkflow}
-        onUnpinWorkflow={handleUnpinWorkflow}
-        builderOpenWorkflowId={builderOpenWorkflowId}
-        onOpenBuilder={setBuilderOpenWorkflowId}
-      />
-
       {/* ── SEARCH BAR ── */}
       <SearchBar
         search={search} onSearchChange={setSearch}
@@ -1008,7 +1040,6 @@ export default function ClipboardTemplatesPage() {
         onToggleCreator={() => setShowCreator((p) => !p)}
         onCreateBoard={handleOpenCreateBoardModal}
         onCreateWorkflow={handleOpenCreateWorkflowModal}
-        onDateModeChange={setDateConverterActive}
       />
 
       {/* ── TEMPLATE CREATOR ── */}
@@ -1024,7 +1055,7 @@ export default function ClipboardTemplatesPage() {
         />
       )}
 
-      {/* ── TEMPLATES GRID ── */}
+      {/* ── TEMPLATES + WORKFLOWS GRID ── */}
       <section style={{ flex: 1, overflowY: "auto", paddingRight: "0.25rem", width: "100%" }}>
         <TemplatesGrid
           templates={filteredTemplates} onCopy={handleCopy} onDelete={handleDeleteTemplate}
@@ -1035,10 +1066,29 @@ export default function ClipboardTemplatesPage() {
           darkMode={darkMode} onPin={handlePinTemplate} onUnpin={handleUnpinTemplate}
           onRequestAssignBoard={handleRequestAssignBoard}
           onReorder={handleReorder}
+          onReorderWorkflow={handleReorderWorkflow}
+          onUpdateColor={handleUpdateColor}
+          workflows={filteredWorkflows}
+          onStartWorkflow={setRunnerWorkflowId}
+          onOpenWorkflowBuilder={setBuilderOpenWorkflowId}
+          onPinWorkflow={handlePinWorkflow}
+          onUnpinWorkflow={handleUnpinWorkflow}
+          onDeleteWorkflow={handleDeleteWorkflow}
           activeBoardName={gridBoardName} canDeleteBoard={gridCanDeleteBoard}
           onRequestDeleteBoard={handleRequestDeleteBoard}
         />
       </section>
+
+      {/* ── WORKFLOW MODALS (builder + runner — no list UI) ── */}
+      <WorkflowPanel
+        workflows={workflows}
+        darkMode={darkMode}
+        onUpdateWorkflow={handleUpdateWorkflow}
+        builderOpenWorkflowId={builderOpenWorkflowId}
+        onOpenBuilder={setBuilderOpenWorkflowId}
+        runnerWorkflowId={runnerWorkflowId}
+        onSetRunnerWorkflowId={setRunnerWorkflowId}
+      />
 
       {/* ════════════════════════════════════════
           MODALS

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 
 // ─────────────────────────────────────────────
 // Types
@@ -28,21 +28,22 @@ export type Workflow = {
   resumeEnabled: boolean;
   lastVisitedStepId?: string | null;
   pinned?: boolean;
+  pinnedAt?: number | null;  // for consistent sort with templates
   createdAt: number;
+  boardId?: string;          // which board this workflow lives on
+  order?: number;            // sort position within the board
 };
 
 type WorkflowPanelProps = {
-  workflows: Workflow[];
+  workflows: Workflow[];          // full list — needed for builder/runner lookups
   darkMode: boolean;
   onUpdateWorkflow: (workflow: Workflow) => void;
-  onDeleteWorkflow: (id: string) => void;
-  onPinWorkflow: (id: string) => void;
-  onUnpinWorkflow: (id: string) => void;
-  // The create-workflow modal now lives in page.tsx (so the
-  // "+ Add Workflow" button in SearchBar can trigger the same flow).
-  // WorkflowPanel just needs to know which workflow's builder is open.
+  // Builder
   builderOpenWorkflowId: string | null;
   onOpenBuilder: (id: string | null) => void;
+  // Runner — id is controlled by page.tsx (set when user clicks ▶ Start in the grid)
+  runnerWorkflowId: string | null;
+  onSetRunnerWorkflowId: (id: string | null) => void;
 };
 
 // ─────────────────────────────────────────────
@@ -149,25 +150,19 @@ export default function WorkflowPanel({
   workflows,
   darkMode,
   onUpdateWorkflow,
-  onDeleteWorkflow,
-  onPinWorkflow,
-  onUnpinWorkflow,
   builderOpenWorkflowId,
   onOpenBuilder,
+  runnerWorkflowId,
+  onSetRunnerWorkflowId,
 }: WorkflowPanelProps) {
-  const [runnerWorkflowId, setRunnerWorkflowId] = useState<string | null>(null);
   const [runnerCurrentStepId, setRunnerCurrentStepId] = useState<string | null>(null);
   const [runnerHistory, setRunnerHistory] = useState<string[]>([]);
-
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [confirmDeleteName, setConfirmDeleteName] = useState("");
-
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
-  const [showTreeView, setShowTreeView] = useState(false); // tree overlay while a workflow is running
-
-  // ── Collapse state: whole section, plus per-row minimize ──
-  const [sectionCollapsed, setSectionCollapsed] = useState(false);
-  const [collapsedRowById, setCollapsedRowById] = useState<Record<string, boolean>>({});
+  const [showTreeView, setShowTreeView] = useState(false);
+  const instrEditorRef      = useRef<HTMLDivElement>(null);
+  const instrSavedRangeRef  = useRef<Range | null>(null);
+  const [showTablePicker,   setShowTablePicker]   = useState(false);
+  const [tableHover,        setTableHover]         = useState<{rows:number;cols:number}>({rows:0,cols:0});
 
   const cardBg      = darkMode ? "#020617" : "white";
   const borderBase  = darkMode ? "#1e293b" : "#bfdbfe";
@@ -236,17 +231,80 @@ export default function WorkflowPanel({
     if (editingStepId === stepId) setEditingStepId(null);
   }
 
-  const layout = useMemo(() => builderWorkflow ? computeLayout(builderWorkflow) : null, [builderWorkflow]);
-
-  function startRunner(workflow: Workflow) {
-    const startStepId = (workflow.resumeEnabled && workflow.lastVisitedStepId && workflow.steps[workflow.lastVisitedStepId])
-      ? workflow.lastVisitedStepId : workflow.rootStepId;
-    setRunnerWorkflowId(workflow.id);
-    setRunnerCurrentStepId(startStepId);
-    setRunnerHistory([]);
+  // ── Instruction rich-text helpers ──
+  function saveInstrSelection() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && instrEditorRef.current?.contains(sel.anchorNode)) {
+      instrSavedRangeRef.current = sel.getRangeAt(0).cloneRange();
+    }
+  }
+  function restoreInstrSelection() {
+    const sel = window.getSelection();
+    if (sel && instrSavedRangeRef.current) { sel.removeAllRanges(); sel.addRange(instrSavedRangeRef.current); }
+  }
+  function applyInstrFormat(command: string, value?: string) {
+    instrEditorRef.current?.focus();
+    restoreInstrSelection();
+    document.execCommand(command, false, value);
+    syncInstruction();
+  }
+  function clearInstrFormatting() {
+    if (!instrEditorRef.current) return;
+    const plain = instrEditorRef.current.innerText;
+    instrEditorRef.current.innerHTML = "";
+    instrEditorRef.current.innerText = plain;
+    instrEditorRef.current.focus();
+    syncInstruction();
+  }
+  function insertInstrTable(rows: number, cols: number) {
+    instrEditorRef.current?.focus();
+    restoreInstrSelection();
+    const colW = Math.round(100 / cols);
+    let html = `<table style="border-collapse:collapse;width:100%;margin:0.5rem 0"><tbody>`;
+    for (let r = 0; r < rows; r++) {
+      html += "<tr>";
+      for (let c = 0; c < cols; c++) {
+        html += `<td style="border:1px solid #94a3b8;padding:0.35rem 0.5rem;min-width:60px;width:${colW}%">&nbsp;</td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table><p><br></p>";
+    document.execCommand("insertHTML", false, html);
+    setShowTablePicker(false);
+    syncInstruction();
+  }
+  function syncInstruction() {
+    if (!instrEditorRef.current || !builderWorkflow || !editingStepId) return;
+    updateStep(builderWorkflow, editingStepId, { instruction: instrEditorRef.current.innerHTML });
   }
 
-  function exitRunner() { setRunnerWorkflowId(null); setRunnerCurrentStepId(null); setRunnerHistory([]); setShowTreeView(false); }
+    // Seed the instruction editor when a different step is opened for editing
+  useEffect(() => {
+    if (instrEditorRef.current && editingStepId && builderWorkflow) {
+      const step = builderWorkflow.steps[editingStepId];
+      if (step && instrEditorRef.current.innerHTML !== step.instruction) {
+        instrEditorRef.current.innerHTML = step.instruction || "";
+      }
+    }
+  }, [editingStepId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const layout = useMemo(() => builderWorkflow ? computeLayout(builderWorkflow) : null, [builderWorkflow]);
+  const editingStep = builderWorkflow && editingStepId ? builderWorkflow.steps[editingStepId] : null;
+
+  // When page.tsx sets runnerWorkflowId (via TemplatesGrid's ▶ Start button),
+  // initialize the runner step based on resume settings.
+  useEffect(() => {
+    if (!runnerWorkflowId) { setRunnerCurrentStepId(null); setRunnerHistory([]); setShowTreeView(false); return; }
+    const wf = workflows.find((w) => w.id === runnerWorkflowId);
+    if (!wf) return;
+    const startStepId = (wf.resumeEnabled && wf.lastVisitedStepId && wf.steps[wf.lastVisitedStepId])
+      ? wf.lastVisitedStepId : wf.rootStepId;
+    setRunnerCurrentStepId(startStepId);
+    setRunnerHistory([]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runnerWorkflowId]);
+
+  function exitRunner() { onSetRunnerWorkflowId(null); setRunnerCurrentStepId(null); setRunnerHistory([]); setShowTreeView(false); }
 
   const runnerWorkflow = workflows.find((w) => w.id === runnerWorkflowId) ?? null;
   const runnerStep = runnerWorkflow && runnerCurrentStepId ? runnerWorkflow.steps[runnerCurrentStepId] : null;
@@ -272,7 +330,6 @@ export default function WorkflowPanel({
     if (runnerWorkflow) persistProgress(runnerWorkflow, prevStepId);
   }
 
-  // Jump to any step from the tree view — records the jump in history so Back still works
   function jumpToStep(stepId: string) {
     if (!runnerWorkflow || !runnerCurrentStepId) return;
     if (stepId === runnerCurrentStepId) { setShowTreeView(false); return; }
@@ -282,131 +339,39 @@ export default function WorkflowPanel({
     setShowTreeView(false);
   }
 
+  // Arrow key navigation while runner is open.
+  // ← Left  = Back (same as the ← Back button)
+  // → Right = forward only when there is exactly one branch (unambiguous path)
+  // Suppressed if tree view or builder is open, or if focus is on a text input.
+  useEffect(() => {
+    if (!runnerWorkflowId) return;
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+      if (showTreeView || builderOpenWorkflowId) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goBack();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        // Only auto-advance when there's exactly one branch (no ambiguity)
+        if (runnerStep && runnerStep.branches.length === 1) {
+          goToBranch(runnerStep.branches[0]);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runnerWorkflowId, runnerStep, runnerHistory, showTreeView, builderOpenWorkflowId]);
+
   const runnerTreeLayout = useMemo(
     () => (runnerWorkflow && showTreeView) ? computeLayout(runnerWorkflow) : null,
     [runnerWorkflow, showTreeView]
   );
 
-  function requestDelete(workflow: Workflow) { setConfirmDeleteId(workflow.id); setConfirmDeleteName(workflow.title); }
-  function confirmDelete() { if (confirmDeleteId) onDeleteWorkflow(confirmDeleteId); setConfirmDeleteId(null); setConfirmDeleteName(""); }
-
-  const pinnedWorkflows   = workflows.filter((w) => w.pinned).sort((a, b) => a.createdAt - b.createdAt);
-  const unpinnedWorkflows = workflows.filter((w) => !w.pinned).sort((a, b) => b.createdAt - a.createdAt);
-  const orderedWorkflows  = [...pinnedWorkflows, ...unpinnedWorkflows];
-
-  const editingStep = builderWorkflow && editingStepId ? builderWorkflow.steps[editingStepId] : null;
-
   return (
     <>
-      {/* ════════ List view ════════ */}
-      <section style={{
-        width: "100%", padding: "0.75rem 1rem",
-        border: `1px solid ${borderBase}`, borderTopWidth: "2px", borderTopColor: violet,
-        borderRadius: "10px", backgroundColor: cardBg,
-        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.16)", marginBottom: "0.5rem",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: sectionCollapsed ? 0 : "0.6rem", flexWrap: "wrap", gap: "0.5rem" }}>
-          <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, color: textColor, display: "flex", alignItems: "center", gap: "0.4rem" }}>
-            🧭 Workflows
-            {sectionCollapsed && orderedWorkflows.length > 0 && (
-              <span style={{ fontSize: "0.72rem", fontWeight: 500, color: mutedText, backgroundColor: darkMode ? "#1e293b" : "#e5e7eb", borderRadius: "999px", padding: "0.1rem 0.55rem" }}>
-                {orderedWorkflows.length}
-              </span>
-            )}
-          </h2>
-          <button type="button" onClick={() => setSectionCollapsed((p) => !p)}
-            style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${darkMode ? "#4b5563" : "#d1d5db"}`, backgroundColor: darkMode ? "#020617" : "white", color: darkMode ? "#e5e7eb" : "#111827", fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}>
-            {sectionCollapsed ? "Expand section" : "Minimize section"}
-          </button>
-        </div>
-
-        {!sectionCollapsed && (
-          orderedWorkflows.length === 0 ? (
-            <p style={{ margin: 0, fontSize: "0.85rem", color: mutedText, fontStyle: "italic" }}>
-              No workflows yet. Use "+ Add Workflow" next to Create Board to turn a scattered process into clear, step-by-step guidance.
-            </p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {orderedWorkflows.map((wf) => {
-                const stepCount = Object.keys(wf.steps).length;
-                const isPinned = !!wf.pinned;
-                const rowCollapsed = !!collapsedRowById[wf.id];
-                return (
-                  <div key={wf.id} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem",
-                    padding: rowCollapsed ? "0.35rem 0.65rem" : "0.55rem 0.75rem", borderRadius: "8px", flexWrap: "wrap",
-                    border: `1px solid ${isPinned ? amber : borderBase}`,
-                    backgroundColor: darkMode ? "#0f172a" : "#fafafa",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-                      {isPinned && <span style={{ fontSize: "0.75rem", color: amber }}>📌</span>}
-                      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                        <span style={{ fontWeight: 600, fontSize: "0.9rem", color: textColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {wf.title}
-                        </span>
-                        {!rowCollapsed && (
-                          <span style={{ fontSize: "0.72rem", color: mutedText }}>
-                            {stepCount} step{stepCount !== 1 ? "s" : ""}{wf.resumeEnabled ? " • resume enabled" : ""}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
-                      <button type="button" onClick={() => setCollapsedRowById((prev) => ({ ...prev, [wf.id]: !prev[wf.id] }))}
-                        title={rowCollapsed ? "Expand" : "Minimize"}
-                        style={{ padding: "0.2rem 0.6rem", borderRadius: "999px", border: `1px solid ${darkMode ? "#6b7280" : "#9ca3af"}`, backgroundColor: darkMode ? "#020617" : "white", color: textColor, fontSize: "0.72rem", fontWeight: 500, cursor: "pointer" }}>
-                        {rowCollapsed ? "Expand" : "Minimize"}
-                      </button>
-                      {!rowCollapsed && (
-                        <>
-                          <button type="button" onClick={() => startRunner(wf)}
-                            style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${accent}`, backgroundColor: darkMode ? "#0f172a" : "#eff6ff", color: darkMode ? "#93c5fd" : "#1d4ed8", fontSize: "0.75rem", fontWeight: 500, cursor: "pointer" }}>
-                            ▶ Start
-                          </button>
-                          <button type="button" onClick={() => onOpenBuilder(wf.id)}
-                            style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${darkMode ? "#9a3412" : "#d97706"}`, backgroundColor: darkMode ? "#020617" : "white", color: darkMode ? "#fdba74" : "#b45309", fontSize: "0.75rem", cursor: "pointer" }}>
-                            Edit
-                          </button>
-                          <button type="button" onClick={() => isPinned ? onUnpinWorkflow(wf.id) : onPinWorkflow(wf.id)}
-                            style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: `1px solid ${isPinned ? amber : (darkMode ? "#4b5563" : "#d1d5db")}`, backgroundColor: darkMode ? "#020617" : "white", color: isPinned ? "#ea580c" : (darkMode ? "#e5e7eb" : "#111827"), fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}>
-                            {isPinned ? "Unpin" : "Pin"}
-                          </button>
-                          <button type="button" onClick={() => requestDelete(wf)} title="Delete workflow"
-                            style={{ padding: "0.2rem 0.45rem", borderRadius: "999px", border: "none", backgroundColor: "transparent", color: "#b91c1c", fontWeight: "bold", fontSize: "0.95rem", cursor: "pointer" }}>
-                            ✕
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )
-        )}
-      </section>
-
-      {/* ════════ Delete confirmation ════════ */}
-      {confirmDeleteId && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 80 }}
-          onClick={() => setConfirmDeleteId(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ ...modalBoxStyle, maxWidth: "26rem", width: "90%" }}>
-            <h2 style={{ fontSize: "1.3rem", fontWeight: "bold", marginTop: 0, marginBottom: "0.75rem", color: textColor }}>Delete Workflow?</h2>
-            <p style={{ marginBottom: "1.25rem", color: mutedText }}>
-              Are you sure you want to delete <strong>"{confirmDeleteName}"</strong>? All its steps and branches will be permanently removed.
-            </p>
-            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
-              <button type="button" onClick={() => setConfirmDeleteId(null)}
-                style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: `1px solid ${inputBorder}`, backgroundColor: darkMode ? "#374151" : "#f9fafb", color: textColor, cursor: "pointer", fontWeight: 500 }}>Cancel</button>
-              <button type="button" onClick={confirmDelete}
-                style={{ padding: "0.5rem 1rem", borderRadius: "0.375rem", border: "none", backgroundColor: "#dc2626", color: "white", cursor: "pointer", fontWeight: 500 }}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════════ Builder modal — flowchart view ════════ */}
       {builderWorkflow && layout && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 80, padding: "1rem" }}
           onClick={() => { onOpenBuilder(null); setEditingStepId(null); }}>
@@ -555,9 +520,37 @@ export default function WorkflowPanel({
                   onChange={(e) => updateStep(builderWorkflow, editingStep.id, { title: e.target.value })}
                   style={{ ...inputStyle, fontWeight: 600, marginBottom: "0.4rem" }} autoFocus />
 
-                <textarea placeholder="Instructions for this step..." value={editingStep.instruction} rows={2}
-                  onChange={(e) => updateStep(builderWorkflow, editingStep.id, { instruction: e.target.value })}
-                  style={{ ...inputStyle, resize: "vertical", marginBottom: "0.6rem" }} />
+                {/* Instruction toolbar */}
+                <div style={{ display:"flex", alignItems:"center", gap:"0.25rem", flexWrap:"wrap", padding:"0.3rem", borderRadius:"6px 6px 0 0", border:`1px solid ${inputBorder}`, borderBottom:"none", backgroundColor: darkMode?"#0f172a":"#f3f4f6" }}>
+                  {[["B","bold",{fontWeight:800}],["I","italic",{fontStyle:"italic",fontWeight:600}],["U","underline",{textDecoration:"underline",fontWeight:600}]].map(([label,cmd,sty]) => (
+                    <button key={String(label)} type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>applyInstrFormat(String(cmd))}
+                      style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer", lineHeight:1, ...sty as React.CSSProperties }}>
+                      {label}
+                    </button>
+                  ))}
+                  <button type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>applyInstrFormat("insertUnorderedList")} style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer" }}>• List</button>
+                  <button type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>applyInstrFormat("insertOrderedList")} style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer" }}>1. List</button>
+                  <div style={{ position:"relative", display:"inline-block" }}>
+                    <button type="button" onMouseDown={(e)=>e.preventDefault()} onClick={()=>{ restoreInstrSelection(); setShowTablePicker(p=>!p); }} style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:textColor, fontSize:"0.75rem", cursor:"pointer" }}>⊞ Table</button>
+                    {showTablePicker && (
+                      <div onMouseLeave={()=>setTableHover({rows:0,cols:0})} style={{ position:"absolute", top:"110%", left:0, zIndex:200, backgroundColor:darkMode?"#1e293b":"white", border:`1px solid ${inputBorder}`, borderRadius:"6px", padding:"0.5rem", boxShadow:"0 4px 12px rgba(0,0,0,0.25)" }}>
+                        <div style={{ fontSize:"0.65rem", color:mutedText, marginBottom:"0.3rem", whiteSpace:"nowrap" }}>{tableHover.rows>0?`${tableHover.rows} × ${tableHover.cols} table`:"Select size"}</div>
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(6,18px)", gap:"2px" }}>
+                          {Array.from({length:36},(_,i)=>{ const r=Math.floor(i/6)+1,c=(i%6)+1; const active=r<=tableHover.rows&&c<=tableHover.cols; return (
+                            <div key={i} onMouseEnter={()=>setTableHover({rows:r,cols:c})} onClick={()=>insertInstrTable(tableHover.rows,tableHover.cols)} style={{ width:"18px", height:"18px", borderRadius:"2px", cursor:"pointer", backgroundColor:active?(darkMode?"#3b82f6":"#bfdbfe"):(darkMode?"#334155":"#f1f5f9"), border:`1px solid ${active?(darkMode?"#60a5fa":"#93c5fd"):(darkMode?"#475569":"#e2e8f0")}` }} />
+                          );})}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" onMouseDown={(e)=>e.preventDefault()} onClick={clearInstrFormatting} style={{ padding:"0.2rem 0.45rem", borderRadius:"5px", border:`1px solid ${inputBorder}`, backgroundColor:darkMode?"#1e293b":"white", color:mutedText, fontSize:"0.68rem", cursor:"pointer" }}>Clear</button>
+                </div>
+                <div ref={instrEditorRef} contentEditable
+                  onInput={syncInstruction} onMouseUp={saveInstrSelection} onKeyUp={saveInstrSelection}
+                  suppressContentEditableWarning
+                  data-placeholder="Instructions for this step..."
+                  style={{ minHeight:"4rem", maxHeight:"12rem", overflowY:"auto", padding:"0.5rem", borderRadius:"0 0 6px 6px", border:`1px solid ${inputBorder}`, backgroundColor:inputBg, color:textColor, fontSize:"0.85rem", marginBottom:"0.6rem", whiteSpace:"pre-wrap", wordBreak:"break-word" }} />
+                <style>{`[contenteditable][data-placeholder]:empty:before{content:attr(data-placeholder);color:${darkMode?"#64748b":"#9ca3af"};pointer-events:none} .wf-rich-body ul,.wf-rich-body ol{margin:0.25rem 0 0.25rem 1.1rem;padding:0} .wf-rich-body table{border-collapse:collapse;width:100%;margin:0.5rem 0} .wf-rich-body td{border:1px solid #94a3b8;padding:0.35rem 0.5rem;min-width:60px;vertical-align:top}`}</style>
 
                 <div style={{ fontSize: "0.75rem", fontWeight: 600, color: mutedText, marginBottom: "0.35rem" }}>
                   Options from this step:
@@ -634,9 +627,8 @@ export default function WorkflowPanel({
             <h2 style={{ fontSize: "1.3rem", fontWeight: "bold", margin: "0.5rem 0 0.5rem", color: textColor }}>
               {runnerStep.title || "(untitled step)"}
             </h2>
-            <p style={{ fontSize: "0.95rem", color: textColor, lineHeight: 1.5, marginBottom: "1.25rem", whiteSpace: "pre-wrap" }}>
-              {runnerStep.instruction || "No instructions added for this step yet."}
-            </p>
+            <div className="wf-rich-body" style={{ fontSize:"0.95rem", color:textColor, lineHeight:1.5, marginBottom:"1.25rem" }}
+              dangerouslySetInnerHTML={{ __html: runnerStep.instruction || "<em style='opacity:0.5'>No instructions added for this step yet.</em>" }} />
 
             {runnerStep.branches.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1rem" }}>
@@ -673,6 +665,9 @@ export default function WorkflowPanel({
                 ✎ Edit workflow
               </button>
             </div>
+            <p style={{ margin: "0.5rem 0 0", fontSize: "0.68rem", color: mutedText, textAlign: "center" }}>
+              ← → arrow keys to navigate{runnerStep.branches.length === 1 ? " • → auto-advances on single-option steps" : ""}
+            </p>
           </div>
         </div>
       )}

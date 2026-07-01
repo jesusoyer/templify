@@ -1,41 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
 
-type Page = {
-  id: string;
-  name: string;
-};
-
-type Board = {
-  id: string;
-  name: string;
-  pageId: string;
-};
+type Page  = { id: string; name: string; };
+type Board = { id: string; name: string; pageId: string; };
 
 type SearchBarProps = {
   search: string;
   onSearchChange: (value: string) => void;
   darkMode: boolean;
-
-  // Pages + boards for scope selector
   pages: Page[];
   boards: Board[];
   searchScopeType: "all" | "page" | "board";
   searchScopeId: string;
   onSearchScopeChange: (type: "all" | "page" | "board", id: string) => void;
-
-  // Creator toggle
   showCreator: boolean;
   onToggleCreator: () => void;
-
-  // Create board (in active page)
   onCreateBoard: () => void;
-
-  // Create workflow (opens the workflow naming modal, lives in page.tsx)
   onCreateWorkflow: () => void;
-
-  // Tells parent whether the search box should be treated as a
-  // date-conversion tool right now (true) instead of a template filter.
-  onDateModeChange?: (active: boolean) => void;
+  // onDateModeChange removed — search always works now regardless of filing mode
 };
 
 // ─────────────────────────────────────────────
@@ -44,67 +25,55 @@ type SearchBarProps = {
 
 function copyToClipboardSafe(text: string) {
   if (typeof window === "undefined") return;
-  if (navigator && "clipboard" in navigator && navigator.clipboard?.writeText) {
+  if (navigator?.clipboard?.writeText) {
     navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
-  } else {
-    fallbackCopy(text);
-  }
+  } else { fallbackCopy(text); }
 }
-
 function fallbackCopy(value: string) {
   try {
-    const textarea = document.createElement("textarea");
-    textarea.value = value;
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    textarea.style.pointerEvents = "none";
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand("copy");
-    document.body.removeChild(textarea);
+    const ta = document.createElement("textarea");
+    ta.value = value; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); document.body.removeChild(ta);
   } catch {}
 }
 
 // ─────────────────────────────────────────────
-// Month / ordinal helpers
+// Month helpers
 // ─────────────────────────────────────────────
 
 const MONTH_NAMES = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December",
 ];
-
-const MONTH_TO_NUM: Record<string, number> = {
+const MONTH_TO_NUM: Record<string,number> = {
   january:1,february:2,march:3,april:4,may:5,june:6,
   july:7,august:8,september:9,october:10,november:11,december:12,
 };
-
-const MONTH_TO_PAD: Record<string, string> = {
+const MONTH_TO_PAD: Record<string,string> = {
   january:"01",february:"02",march:"03",april:"04",may:"05",june:"06",
   july:"07",august:"08",september:"09",october:"10",november:"11",december:"12",
 };
-
-function daysInMonth(month: number, year: number): number {
-  return new Date(year, month, 0).getDate();
-}
+function daysInMonth(month: number, year: number) { return new Date(year, month, 0).getDate(); }
 
 // ─────────────────────────────────────────────
 // Date regex
 // ─────────────────────────────────────────────
 
-const LONG_DATE_RE =
-  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/gi;
-
-// Non-global version for single full-string match checks (auto-convert detection)
-const LONG_DATE_RE_SINGLE =
-  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/i;
-
-// Matches the trailing initials token in an already-converted string, e.g.
-// "01/15/2026 AT 1:00PM JO" → captures "JO". Works with 0+ trailing letters.
+const LONG_DATE_RE = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/gi;
+const LONG_DATE_RE_SINGLE = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(am|pm)\b/i;
 const TRAILING_INITIALS_RE = /^(.*?AT\s+\d{1,2}:\d{2}(?:AM|PM))(\s*)([A-Za-z]*)$/;
 
 // ─────────────────────────────────────────────
-// Filing date logic
+// Filing date logic — weekend-aware
+//
+// Filing window: Mon–Fri 8:00 AM – 5:00 PM.
+// Outside that window → next valid BUSINESS DAY at 8:00 AM.
+//   • After 5 PM Friday  → Monday 8:00 AM
+//   • Saturday any time  → Monday 8:00 AM
+//   • Sunday any time    → Monday 8:00 AM
+//   • After 5 PM Mon–Thu → next day 8:00 AM
+//   • Before 8 AM Mon–Fri → same day 8:00 AM
 // ─────────────────────────────────────────────
 
 interface ParsedDateParts {
@@ -112,7 +81,7 @@ interface ParsedDateParts {
   hour12: number; minute: number; meridiem: string;
 }
 
-function toMinutesSinceMidnight(parts: ParsedDateParts): number {
+function toMinutes(parts: ParsedDateParts): number {
   let h = parts.hour12;
   const isPM = parts.meridiem.toLowerCase() === "pm";
   if (isPM && h !== 12) h += 12;
@@ -120,60 +89,106 @@ function toMinutesSinceMidnight(parts: ParsedDateParts): number {
   return h * 60 + parts.minute;
 }
 
+function advanceDate(day: number, month: number, year: number, by: number): { day: number; month: number; year: number } {
+  let d = day + by;
+  let m = month;
+  let y = year;
+  while (d > daysInMonth(m, y)) { d -= daysInMonth(m, y); m++; if (m > 12) { m = 1; y++; } }
+  return { day: d, month: m, year: y };
+}
+
 function applyFilingDateRule(parts: ParsedDateParts): ParsedDateParts {
-  const mins  = toMinutesSinceMidnight(parts);
   const OPEN  = 8 * 60;
   const CLOSE = 17 * 60;
-  if (mins >= OPEN && mins <= CLOSE) return parts;
+  const mins  = toMinutes(parts);
 
-  let newDay   = parts.day + 1;
-  let newMonth = MONTH_TO_NUM[parts.monthName.toLowerCase()];
-  let newYear  = parts.year;
-  if (newDay > daysInMonth(newMonth, newYear)) {
-    newDay = 1; newMonth += 1;
-    if (newMonth > 12) { newMonth = 1; newYear += 1; }
+  let { day, year } = parts;
+  let month = MONTH_TO_NUM[parts.monthName.toLowerCase()];
+
+  // Compute day-of-week for the input date (0 = Sun, 1 = Mon … 6 = Sat)
+  const dow = new Date(year, month - 1, day).getDay();
+
+  const isWeekend   = dow === 0 || dow === 6;          // Sat or Sun
+  const isAfterHours = mins > CLOSE;
+  const isBeforeOpen = mins < OPEN;
+  const isFriday    = dow === 5;
+
+  let needsAdvance = false;
+  let daysToAdd    = 0;
+
+  if (isWeekend) {
+    // Saturday → +2 to Monday; Sunday → +1 to Monday
+    needsAdvance = true;
+    daysToAdd = dow === 6 ? 2 : 1;
+  } else if (isAfterHours) {
+    if (isFriday) {
+      // After 5 PM Friday → Monday (+3)
+      needsAdvance = true;
+      daysToAdd = 3;
+    } else {
+      // After 5 PM Mon–Thu → next weekday (+1; never lands on weekend since Thu+1=Fri)
+      needsAdvance = true;
+      daysToAdd = 1;
+    }
+  } else if (isBeforeOpen) {
+    // Before 8 AM any weekday → same day 8:00 AM (no day advance needed)
+    needsAdvance = false;
   }
-  return { monthName: MONTH_NAMES[newMonth - 1].toLowerCase(), day: newDay, year: newYear, hour12: 8, minute: 0, meridiem: "am" };
+
+  if (!needsAdvance && !isBeforeOpen) return parts; // within window
+
+  if (needsAdvance) {
+    const next = advanceDate(day, month, year, daysToAdd);
+    day = next.day; month = next.month; year = next.year;
+  }
+
+  return {
+    monthName: MONTH_NAMES[month - 1].toLowerCase(),
+    day, year, hour12: 8, minute: 0, meridiem: "am",
+  };
 }
 
 function applyValidFilingConvert(input: string, initials: string): string | null {
   let matched = false;
-  const result = input.replace(
-    LONG_DATE_RE,
-    (_match, monthStr, dayStr, yearStr, hourStr, minStr, merStr) => {
-      matched = true;
-      const parts: ParsedDateParts = {
-        monthName: monthStr.toLowerCase(), day: parseInt(dayStr, 10),
-        year: parseInt(yearStr, 10), hour12: parseInt(hourStr, 10),
-        minute: parseInt(minStr, 10), meridiem: merStr.toLowerCase(),
-      };
-      const corrected = applyFilingDateRule(parts);
-      const month = MONTH_TO_PAD[corrected.monthName];
-      const day   = String(corrected.day).padStart(2, "0");
-      const year  = String(corrected.year);
-      const hour  = String(corrected.hour12);
-      const min   = String(corrected.minute).padStart(2, "0");
-      const mer   = corrected.meridiem.toUpperCase();
-      const suffix = initials.trim().toUpperCase() ? ` ${initials.trim().toUpperCase()}` : "";
-      return `${month}/${day}/${year} AT ${hour}:${min}${mer}${suffix}`;
-    }
-  );
+  const result = input.replace(LONG_DATE_RE, (_m, monthStr, dayStr, yearStr, hourStr, minStr, merStr) => {
+    matched = true;
+    const parts: ParsedDateParts = {
+      monthName: monthStr.toLowerCase(), day: parseInt(dayStr, 10),
+      year: parseInt(yearStr, 10), hour12: parseInt(hourStr, 10),
+      minute: parseInt(minStr, 10), meridiem: merStr.toLowerCase(),
+    };
+    const corrected = applyFilingDateRule(parts);
+    const month = MONTH_TO_PAD[corrected.monthName];
+    const day   = String(corrected.day).padStart(2, "0");
+    const year  = String(corrected.year);
+    const hour  = String(corrected.hour12);
+    const min   = String(corrected.minute).padStart(2, "0");
+    const mer   = corrected.meridiem.toUpperCase();
+    const suffix = initials.trim().toUpperCase() ? ` ${initials.trim().toUpperCase()}` : "";
+    return `${month}/${day}/${year} AT ${hour}:${min}${mer}${suffix}`;
+  });
   return matched ? result : null;
 }
 
 function formatNowConverted(initials: string): string {
+  // Apply filing rule to right now
   const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day   = String(now.getDate()).padStart(2, "0");
-  const year  = String(now.getFullYear());
-
-  let hour12 = now.getHours() % 12;
-  if (hour12 === 0) hour12 = 12;
-  const min = String(now.getMinutes()).padStart(2, "0");
-  const mer = now.getHours() >= 12 ? "PM" : "AM";
-
+  const parts: ParsedDateParts = {
+    monthName: MONTH_NAMES[now.getMonth()].toLowerCase(),
+    day: now.getDate(), year: now.getFullYear(),
+    hour12: now.getHours() === 0 ? 12 : now.getHours() > 12 ? now.getHours() - 12 : now.getHours(),
+    minute: now.getMinutes(),
+    meridiem: now.getHours() >= 12 ? "pm" : "am",
+  };
+  const corrected = applyFilingDateRule(parts);
+  const month = MONTH_TO_PAD[corrected.monthName];
+  const day   = String(corrected.day).padStart(2, "0");
+  const year  = String(corrected.year);
+  const hour  = String(corrected.hour12);
+  const min   = String(corrected.minute).padStart(2, "0");
+  const mer   = corrected.meridiem.toUpperCase();
   const suffix = initials.trim().toUpperCase() ? ` ${initials.trim().toUpperCase()}` : "";
-  return `${month}/${day}/${year} AT ${hour12}:${min}${mer}${suffix}`;
+  return `${month}/${day}/${year} AT ${hour}:${min}${mer}${suffix}`;
 }
 
 // ─────────────────────────────────────────────
@@ -185,19 +200,15 @@ export default function SearchBar({
   pages, boards,
   searchScopeType, searchScopeId, onSearchScopeChange,
   showCreator, onToggleCreator, onCreateBoard, onCreateWorkflow,
-  onDateModeChange,
 }: SearchBarProps) {
   const [autoCaps,    setAutoCaps]    = useState(false);
   const [trimTo100,   setTrimTo100]   = useState(false);
   const [validFiling, setValidFiling] = useState(false);
   const [initials,    setInitials]    = useState("JO");
+  const [dateInput,   setDateInput]   = useState("");  // right-side date field (independent)
   const [copied,      setCopied]      = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Tracks whether the search bar currently holds an *already converted*
-  // string (so we know to keep the trailing initials token in sync rather
-  // than re-running conversion on it).
-  const hasConvertedRef = useRef(false);
+  const hasConvertedDateRef = useRef(false);
 
   const cardBg      = darkMode ? "#020617" : "white";
   const borderBase  = darkMode ? "#1d4ed8" : "#bfdbfe";
@@ -207,16 +218,15 @@ export default function SearchBar({
   const mutedText   = darkMode ? "#9ca3af" : "#6b7280";
   const inputBg     = darkMode ? "#020617" : "white";
   const inputBorder = darkMode ? "#475569" : "#ccc";
+  const amberBg     = darkMode ? "#1c1000" : "#fffbeb";
+  const amberText   = darkMode ? "#fcd34d" : "#b45309";
 
-  useEffect(() => {
-    return () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); };
-  }, []);
+  useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); }, []);
 
-  // Tell the parent whether the search bar is currently a date-conversion
-  // tool (Valid Filing Date on) so it can stop filtering templates by it.
+  // Clear date input when filing mode turns off
   useEffect(() => {
-    onDateModeChange?.(validFiling);
-  }, [validFiling]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!validFiling) { setDateInput(""); hasConvertedDateRef.current = false; }
+  }, [validFiling]);
 
   function triggerCopied(text: string) {
     copyToClipboardSafe(text);
@@ -225,171 +235,95 @@ export default function SearchBar({
     copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
   }
 
-  function applyTransforms(raw: string, caps: boolean, trim: boolean, filing: boolean, inits: string): string {
-    let result = raw;
-    if (filing) {
-      const converted = applyValidFilingConvert(result, inits);
-      if (converted !== null) result = converted;
-    }
-    if (caps) result = result.toUpperCase();
-    if (trim) result = result.slice(0, 100);
-    return result;
+  // ── Left side: normal search with caps/trim ──
+  function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
+    let val = e.target.value;
+    if (autoCaps)  val = val.toUpperCase();
+    if (trimTo100) val = val.slice(0, 100);
+    onSearchChange(val);
+    if (autoCaps || trimTo100) triggerCopied(val);
+    else setCopied(false);
   }
 
-  // ── Main input handler ──
-  // While Valid Filing Date is on:
-  //   1. If the typed text fully matches the long-form date pattern, auto-convert immediately.
-  //   2. If the text already looks like a converted result (MM/DD/YYYY AT H:MM AM/PM ...),
-  //      treat anything after the time as the live initials and mirror it into the
-  //      Initials box as the user types/erases it.
-  //   3. Otherwise just pass the raw text through (still typing the date, not done yet).
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleAutoCapsToggle(checked: boolean) {
+    setAutoCaps(checked);
+    if (search && checked) { const r = trimTo100 ? search.toUpperCase().slice(0, 100) : search.toUpperCase(); onSearchChange(r); }
+  }
+  function handleTrimToggle(checked: boolean) {
+    setTrimTo100(checked);
+    if (search && checked) { const r = autoCaps ? search.slice(0, 100).toUpperCase() : search.slice(0, 100); onSearchChange(r); }
+  }
+
+  // ── Right side: date input field — auto-converts on match ──
+  function handleDateInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value;
+    setDateInput(raw);
+    hasConvertedDateRef.current = false;
 
-    if (!validFiling) {
-      // Normal mode — only caps/trim apply, no date logic
-      const transformed = applyTransforms(raw, autoCaps, trimTo100, false, initials);
-      onSearchChange(transformed);
-      if (autoCaps || trimTo100) triggerCopied(transformed);
-      else setCopied(false);
-      return;
-    }
-
-    // ── Valid Filing Date is ON ──
-
-    // Case 1: text matches the long-form input pattern → auto-convert now
     if (LONG_DATE_RE_SINGLE.test(raw)) {
       const converted = applyValidFilingConvert(raw, initials);
-      if (converted !== null) {
-        let result = converted;
-        if (autoCaps)  result = result.toUpperCase();
-        if (trimTo100) result = result.slice(0, 100);
-        hasConvertedRef.current = true;
-        onSearchChange(result);
-        triggerCopied(result);
-        return;
+      if (converted) {
+        setDateInput(converted);
+        hasConvertedDateRef.current = true;
+        triggerCopied(converted);
       }
     }
-
-    // Case 2: text already looks converted (has "AT H:MM AM/PM" in it) →
-    // whatever comes after that is the live initials segment. Mirror it.
-    const trailingMatch = raw.match(TRAILING_INITIALS_RE);
-    if (hasConvertedRef.current && trailingMatch) {
-      const typedInitials = trailingMatch[3] ?? "";
-      setInitials(typedInitials.toUpperCase());
-      let result = raw;
-      if (autoCaps)  result = result.toUpperCase();
-      if (trimTo100) result = result.slice(0, 100);
-      onSearchChange(result);
-      return;
-    }
-
-    // Case 3: still typing the long-form date, not matched yet — pass through raw
-    hasConvertedRef.current = false;
-    let result = raw;
-    if (autoCaps)  result = result.toUpperCase();
-    if (trimTo100) result = result.slice(0, 100);
-    onSearchChange(result);
   }
 
-  function reapply(overrides: Partial<{ caps: boolean; trim: boolean; filing: boolean; inits: string }> = {}) {
-    if (!search) return;
-    const filing = overrides.filing ?? validFiling;
-    const inits  = overrides.inits  ?? initials;
-
-    // If filing mode just turned on and the search box holds a raw long-form
-    // date, convert it immediately.
-    if (filing) {
-      const converted = applyValidFilingConvert(search, inits);
-      if (converted !== null) {
-        let result = converted;
-        if (overrides.caps ?? autoCaps) result = result.toUpperCase();
-        if (overrides.trim ?? trimTo100) result = result.slice(0, 100);
-        hasConvertedRef.current = true;
-        onSearchChange(result);
-        if (result !== search) triggerCopied(result);
-        return;
-      }
-    }
-
-    const transformed = applyTransforms(
-      search,
-      overrides.caps ?? autoCaps,
-      overrides.trim ?? trimTo100,
-      filing,
-      inits,
-    );
-    onSearchChange(transformed);
-    if (transformed !== search) triggerCopied(transformed);
-  }
-
-  function handleAutoCapsToggle(checked: boolean)    { setAutoCaps(checked);    reapply({ caps: checked }); }
-  function handleTrimToggle(checked: boolean)        { setTrimTo100(checked);   reapply({ trim: checked }); }
-  function handleValidFilingToggle(checked: boolean) { setValidFiling(checked); reapply({ filing: checked }); }
-
-  // ── Initials box: live-typed here mirrors into the search bar's trailing token ──
-  function handleInitialsLiveChange(rawValue: string) {
-    const upper = rawValue.toUpperCase();
+  function handleInitialsChange(raw: string) {
+    const upper = raw.toUpperCase();
     setInitials(upper);
-
-    if (!hasConvertedRef.current) return; // nothing converted yet, nothing to splice into
-
-    const trailingMatch = search.match(TRAILING_INITIALS_RE);
-    if (!trailingMatch) return;
-
-    const base = trailingMatch[1]; // e.g. "01/15/2026 AT 1:00PM"
-    const newValue = upper ? `${base} ${upper}` : base;
-    let result = newValue;
-    if (autoCaps)  result = result.toUpperCase();
-    if (trimTo100) result = result.slice(0, 100);
-    onSearchChange(result);
+    // If there's already a converted result, splice in the new initials
+    if (hasConvertedDateRef.current) {
+      const match = dateInput.match(TRAILING_INITIALS_RE);
+      if (match) {
+        const base = match[1];
+        const newVal = upper ? `${base} ${upper}` : base;
+        setDateInput(newVal);
+        triggerCopied(newVal);
+      }
+    }
   }
 
   function handleConvertNow() {
-    // Converts whatever is currently sitting in the search bar — no clipboard read,
-    // so this works every time, not just the first click.
-    let result = search;
-    if (validFiling) {
-      const converted = applyValidFilingConvert(search, initials);
-      if (converted !== null) { result = converted; hasConvertedRef.current = true; }
+    if (!dateInput.trim()) return;
+    const converted = applyValidFilingConvert(dateInput, initials);
+    if (converted) {
+      setDateInput(converted);
+      hasConvertedDateRef.current = true;
+      triggerCopied(converted);
+    } else {
+      // Already converted or unrecognized — copy as-is
+      triggerCopied(dateInput);
     }
-    if (autoCaps)  result = result.toUpperCase();
-    if (trimTo100) result = result.slice(0, 100);
-    onSearchChange(result);
-    triggerCopied(result);
   }
 
   function handleUseCurrentDateTime() {
-    let result = formatNowConverted(initials);
-    if (autoCaps)  result = result.toUpperCase();
-    if (trimTo100) result = result.slice(0, 100);
-    hasConvertedRef.current = true;
-    onSearchChange(result);
+    const result = formatNowConverted(initials);
+    setDateInput(result);
+    hasConvertedDateRef.current = true;
     triggerCopied(result);
   }
 
-  function handleClear() { onSearchChange(""); setCopied(false); hasConvertedRef.current = false; }
+  function handleClearDate() { setDateInput(""); hasConvertedDateRef.current = false; setCopied(false); }
+  function handleClearSearch() { onSearchChange(""); setCopied(false); }
 
-  // ── Scope dropdown: build a flat option list ──
-  // Structure: All pages → [Page: X → boards in X...] for each page
+  // ── Scope dropdown ──
   function handleScopeChange(value: string) {
-    if (value === "all") { onSearchScopeChange("all", "all"); return; }
-    if (value.startsWith("page:")) { onSearchScopeChange("page", value.slice(5)); return; }
-    if (value.startsWith("board:")) { onSearchScopeChange("board", value.slice(6)); return; }
+    if (value === "all")               { onSearchScopeChange("all",   "all");          return; }
+    if (value.startsWith("page:"))     { onSearchScopeChange("page",  value.slice(5)); return; }
+    if (value.startsWith("board:"))    { onSearchScopeChange("board", value.slice(6)); return; }
   }
-
-  function scopeValue(): string {
-    if (searchScopeType === "all")   return "all";
-    if (searchScopeType === "page")  return `page:${searchScopeId}`;
+  function scopeValue() {
+    if (searchScopeType === "all")  return "all";
+    if (searchScopeType === "page") return `page:${searchScopeId}`;
     return `board:${searchScopeId}`;
   }
 
-  // Sort pages: Home first, rest alpha
   const sortedPages = [
     ...pages.filter((p) => p.id === "home-page"),
     ...pages.filter((p) => p.id !== "home-page").sort((a, b) => a.name.localeCompare(b.name)),
   ];
-
   function boardsForPage(pageId: string): Board[] {
     const pb = boards.filter((b) => b.pageId === pageId);
     return [
@@ -398,12 +332,15 @@ export default function SearchBar({
     ];
   }
 
-  const checkboxLabelStyle: React.CSSProperties = {
+  const checkboxLabel: React.CSSProperties = {
     display: "flex", alignItems: "center", gap: "0.35rem",
-    fontSize: "0.8rem", color: textColor, cursor: "pointer", userSelect: "none",
+    fontSize: "0.78rem", color: textColor, cursor: "pointer", userSelect: "none",
   };
-  const checkboxStyle: React.CSSProperties = {
-    width: "14px", height: "14px", accentColor: accent, cursor: "pointer",
+  const chkStyle: React.CSSProperties = { width: "13px", height: "13px", accentColor: accent, cursor: "pointer" };
+  const amberBtn: React.CSSProperties = {
+    padding: "0.25rem 0.6rem", borderRadius: "999px",
+    border: `1px solid ${amber}`, backgroundColor: amberBg,
+    color: amberText, fontSize: "0.72rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
   };
 
   return (
@@ -413,128 +350,151 @@ export default function SearchBar({
       borderLeftStyle: "solid", borderRightStyle: "solid",
       borderTopWidth: "2px", borderBottomWidth: "2px",
       borderLeftWidth: "1px", borderRightWidth: "1px",
-      borderTopColor: accent, borderBottomColor: accent,
+      borderTopColor: validFiling ? amber : accent,
+      borderBottomColor: validFiling ? amber : accent,
       borderLeftColor: borderBase, borderRightColor: borderBase,
       borderRadius: "10px", backgroundColor: cardBg,
       boxShadow: "0 4px 12px rgba(15, 23, 42, 0.16)", marginBottom: "0.5rem",
+      transition: "border-color 0.2s ease",
     }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
 
-        {/* ── Top row ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <label htmlFor="search" style={{ fontWeight: 500, color: validFiling ? amber : textColor, fontSize: "0.95rem" }}>
-              {validFiling ? "Date converter (search disabled)" : "Search templates"}
-            </label>
-            {copied && (
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, color: darkMode ? "#4ade80" : "#15803d", backgroundColor: darkMode ? "#052e16" : "#f0fdf4", border: `1px solid ${darkMode ? "#166534" : "#bbf7d0"}`, borderRadius: "999px", padding: "0.1rem 0.55rem" }}>
-                ✓ Copied
-              </span>
-            )}
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <button type="button" onClick={onCreateBoard} style={{ padding: "0.35rem 0.9rem", borderRadius: "999px", border: "1px solid #3b82f6", backgroundColor: darkMode ? "#020617" : "#eff6ff", color: darkMode ? "#bfdbfe" : "#1d4ed8", fontSize: "0.8rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
-              + Create Board
-            </button>
-            <button type="button" onClick={onCreateWorkflow} style={{ padding: "0.35rem 0.9rem", borderRadius: "999px", border: "1px solid #7c3aed", backgroundColor: darkMode ? "#020617" : "#f5f3ff", color: darkMode ? "#c4b5fd" : "#6d28d9", fontSize: "0.8rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
-              + Add Workflow
-            </button>
-            <button type="button" onClick={onToggleCreator} style={{ padding: "0.35rem 0.9rem", borderRadius: "999px", border: `1px solid ${showCreator ? accent : darkMode ? "#4b5563" : "#d1d5db"}`, backgroundColor: showCreator ? (darkMode ? "#1e3a5f" : "#eff6ff") : (darkMode ? "#020617" : "white"), color: showCreator ? (darkMode ? "#93c5fd" : "#1d4ed8") : textColor, fontSize: "0.8rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s ease" }}>
-              {showCreator ? "✕ Close Creator" : "+ New Template"}
-            </button>
-          </div>
-        </div>
-
-        {/* ── Search input ── */}
-        <input id="search" type="text" value={search} onChange={handleChange}
-          onFocus={(e) => e.target.select()}
-          placeholder={validFiling ? `Type a date: January 15, 2026 1:00 PM` : "Type to search titles..."}
-          style={{ flex: 1, padding: "0.5rem 0.75rem", borderRadius: "6px", border: `1px solid ${validFiling ? amber : inputBorder}`, backgroundColor: inputBg, color: textColor }} />
-
-        {/* ── Toggles row ── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", paddingTop: "0.1rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
-
-            <label style={checkboxLabelStyle}>
-              <input type="checkbox" checked={autoCaps} onChange={(e) => handleAutoCapsToggle(e.target.checked)} style={checkboxStyle} />
-              <span>Auto CAPS</span>
-              {autoCaps && <span style={{ fontSize: "0.7rem", color: accent }}>on</span>}
-            </label>
-
-            <label style={checkboxLabelStyle}>
-              <input type="checkbox" checked={trimTo100} onChange={(e) => handleTrimToggle(e.target.checked)} style={checkboxStyle} />
-              <span>Trim to 100</span>
-              {trimTo100 && <span style={{ fontSize: "0.7rem", color: accent }}>on</span>}
-            </label>
-
-            <label style={{ ...checkboxLabelStyle, fontWeight: validFiling ? 600 : 400 }}>
-              <input type="checkbox" checked={validFiling} onChange={(e) => handleValidFilingToggle(e.target.checked)} style={{ ...checkboxStyle, accentColor: amber }} />
-              <span style={{ color: validFiling ? amber : textColor }}>Valid Filing Date</span>
-              {validFiling && <span style={{ fontSize: "0.7rem", color: amber, fontWeight: 700 }}>on</span>}
-            </label>
-
-            {validFiling && (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                <span style={{ fontSize: "0.8rem", color: mutedText }}>Initials:</span>
-                <input type="text" value={initials} maxLength={6}
-                  onChange={(e) => handleInitialsLiveChange(e.target.value)}
-                  placeholder="JO"
-                  style={{ width: "3.2rem", padding: "0.2rem 0.4rem", borderRadius: "5px", border: `1px solid ${amber}`, backgroundColor: inputBg, color: textColor, fontSize: "0.8rem", fontFamily: "monospace", letterSpacing: "0.05em", textTransform: "uppercase", outline: `2px solid ${amber}22` }} />
-                <button type="button" onClick={handleConvertNow}
-                  style={{ padding: "0.2rem 0.55rem", borderRadius: "999px", border: `1px solid ${amber}`, backgroundColor: darkMode ? "#1c1000" : "#fffbeb", color: darkMode ? "#fcd34d" : "#b45309", fontSize: "0.72rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  ⇄ Convert Now
-                </button>
-                <button type="button" onClick={handleUseCurrentDateTime}
-                  title="Insert the current date and time, converted and with initials"
-                  style={{ padding: "0.2rem 0.55rem", borderRadius: "999px", border: `1px solid ${amber}`, backgroundColor: darkMode ? "#1c1000" : "#fffbeb", color: darkMode ? "#fcd34d" : "#b45309", fontSize: "0.72rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  🕐 Current converted date and time
-                </button>
-              </div>
-            )}
-
-            {trimTo100 && search.length > 0 && (
-              <span style={{ fontSize: "0.75rem", color: search.length >= 100 ? "#b91c1c" : mutedText }}>
-                {search.length}/100
-              </span>
-            )}
-          </div>
-
-          {search.trim().length > 0 && (
-            <button type="button" onClick={handleClear} style={{ padding: "0.3rem 0.85rem", borderRadius: "999px", border: "1px solid #fca5a5", backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5", color: darkMode ? "#fca5a5" : "#dc2626", fontSize: "0.78rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
-              Clear Search Bar
-            </button>
+      {/* ── Top row: labels + action buttons ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontWeight: 500, color: textColor, fontSize: "0.95rem" }}>Search templates</span>
+          {copied && (
+            <span style={{ fontSize: "0.72rem", fontWeight: 500, color: darkMode ? "#4ade80" : "#15803d", backgroundColor: darkMode ? "#052e16" : "#f0fdf4", border: `1px solid ${darkMode ? "#166534" : "#bbf7d0"}`, borderRadius: "999px", padding: "0.1rem 0.5rem" }}>
+              ✓ Copied
+            </span>
           )}
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+          <button type="button" onClick={onCreateBoard}
+            style={{ padding: "0.3rem 0.8rem", borderRadius: "999px", border: "1px solid #3b82f6", backgroundColor: darkMode ? "#020617" : "#eff6ff", color: darkMode ? "#bfdbfe" : "#1d4ed8", fontSize: "0.78rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
+            + Create Board
+          </button>
+          <button type="button" onClick={onCreateWorkflow}
+            style={{ padding: "0.3rem 0.8rem", borderRadius: "999px", border: "1px solid #7c3aed", backgroundColor: darkMode ? "#020617" : "#f5f3ff", color: darkMode ? "#c4b5fd" : "#6d28d9", fontSize: "0.78rem", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
+            + Add Workflow
+          </button>
+          <button type="button" onClick={onToggleCreator}
+            style={{ padding: "0.3rem 0.8rem", borderRadius: "999px", border: `1px solid ${showCreator ? accent : darkMode ? "#4b5563" : "#d1d5db"}`, backgroundColor: showCreator ? (darkMode ? "#1e3a5f" : "#eff6ff") : (darkMode ? "#020617" : "white"), color: showCreator ? (darkMode ? "#93c5fd" : "#1d4ed8") : textColor, fontSize: "0.78rem", fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s ease" }}>
+            {showCreator ? "✕ Close Creator" : "+ New Template"}
+          </button>
+        </div>
+      </div>
 
-        {validFiling && (
-          <p style={{ margin: 0, fontSize: "0.72rem", color: mutedText, fontStyle: "italic", paddingTop: "0.1rem" }}>
-            Template search is paused. Type "January 15, 2026 1:00 PM" to auto-convert • after-hours → next day 8:00AM • initials sync live with the box below — auto-copied
-          </p>
-        )}
+      {/* ── Main body: split when filing is on, single column when off ── */}
+      <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
 
-        {/* ── Search scope ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", color: mutedText }}>
-          <span>Search in:</span>
-          <select value={scopeValue()} onChange={(e) => handleScopeChange(e.target.value)}
-            style={{ padding: "0.25rem 0.6rem", borderRadius: "999px", border: "1px solid #9ca3af", backgroundColor: darkMode ? "#020617" : "white", color: textColor, fontSize: "0.8rem" }}>
-            <option value="all">All pages</option>
-            {sortedPages.map((page) => {
-              const pageBoards = boardsForPage(page.id);
-              return (
-                <optgroup key={page.id} label={`── ${page.name} ──`}>
-                  <option value={`page:${page.id}`}>All of {page.name}</option>
-                  {pageBoards.map((b) => (
-                    <option key={b.id} value={`board:${b.id}`}>
-                      &nbsp;&nbsp;{b.name}
-                    </option>
-                  ))}
-                </optgroup>
-              );
-            })}
-          </select>
+        {/* ── LEFT: Search ── */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.35rem", minWidth: 0 }}>
+          <input
+            id="search" type="text" value={search}
+            onChange={handleSearchChange}
+            onFocus={(e) => e.target.select()}
+            placeholder="Type to search titles..."
+            style={{ width: "100%", padding: "0.5rem 0.7rem", borderRadius: "6px", border: `1px solid ${inputBorder}`, backgroundColor: inputBg, color: textColor, boxSizing: "border-box" }}
+          />
+
+          {/* Toggles + scope */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.4rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+              <label style={checkboxLabel}>
+                <input type="checkbox" checked={autoCaps} onChange={(e) => handleAutoCapsToggle(e.target.checked)} style={chkStyle} />
+                Auto CAPS {autoCaps && <span style={{ fontSize: "0.68rem", color: accent }}>on</span>}
+              </label>
+              <label style={checkboxLabel}>
+                <input type="checkbox" checked={trimTo100} onChange={(e) => handleTrimToggle(e.target.checked)} style={chkStyle} />
+                Trim 100 {trimTo100 && <span style={{ fontSize: "0.68rem", color: accent }}>on</span>}
+              </label>
+              {/* Valid Filing Date toggle lives on the left so it controls the split */}
+              <label style={{ ...checkboxLabel, fontWeight: validFiling ? 600 : 400 }}>
+                <input type="checkbox" checked={validFiling} onChange={(e) => setValidFiling(e.target.checked)} style={{ ...chkStyle, accentColor: amber }} />
+                <span style={{ color: validFiling ? amber : textColor }}>Valid Filing Date</span>
+                {validFiling && <span style={{ fontSize: "0.68rem", color: amber, fontWeight: 700 }}>on</span>}
+              </label>
+              {trimTo100 && search.length > 0 && (
+                <span style={{ fontSize: "0.72rem", color: search.length >= 100 ? "#b91c1c" : mutedText }}>{search.length}/100</span>
+              )}
+            </div>
+            {search.trim().length > 0 && (
+              <button type="button" onClick={handleClearSearch}
+                style={{ padding: "0.25rem 0.7rem", borderRadius: "999px", border: "1px solid #fca5a5", backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5", color: darkMode ? "#fca5a5" : "#dc2626", fontSize: "0.72rem", cursor: "pointer", fontWeight: 500 }}>
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Scope selector */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.78rem", color: mutedText }}>
+            <span>Search in:</span>
+            <select value={scopeValue()} onChange={(e) => handleScopeChange(e.target.value)}
+              style={{ padding: "0.2rem 0.5rem", borderRadius: "999px", border: "1px solid #9ca3af", backgroundColor: darkMode ? "#020617" : "white", color: textColor, fontSize: "0.78rem" }}>
+              <option value="all">All pages</option>
+              {sortedPages.map((page) => {
+                const pageBoards = boardsForPage(page.id);
+                return (
+                  <optgroup key={page.id} label={`── ${page.name} ──`}>
+                    <option value={`page:${page.id}`}>All of {page.name}</option>
+                    {pageBoards.map((b) => (
+                      <option key={b.id} value={`board:${b.id}`}>&nbsp;&nbsp;{b.name}</option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+            </select>
+          </div>
         </div>
 
+        {/* ── RIGHT: Date converter — only shown when Valid Filing Date is on ── */}
+        {validFiling && (
+          <div style={{
+            flex: 1, minWidth: 0,
+            borderLeft: `2px solid ${amber}`,
+            paddingLeft: "0.75rem",
+            display: "flex", flexDirection: "column", gap: "0.35rem",
+          }}>
+            {/* Label row */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.4rem" }}>
+              <span style={{ fontSize: "0.78rem", fontWeight: 600, color: amber }}>📅 Valid Filing Date</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <span style={{ fontSize: "0.72rem", color: mutedText }}>Initials:</span>
+                <input type="text" value={initials} maxLength={6}
+                  onChange={(e) => handleInitialsChange(e.target.value)}
+                  placeholder="JO"
+                  style={{ width: "2.8rem", padding: "0.2rem 0.4rem", borderRadius: "5px", border: `1px solid ${amber}`, backgroundColor: inputBg, color: textColor, fontSize: "0.78rem", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.05em" }}
+                />
+              </div>
+            </div>
+
+            {/* Date input field */}
+            <input
+              type="text" value={dateInput}
+              onChange={handleDateInputChange}
+              onFocus={(e) => e.target.select()}
+              placeholder="January 15, 2026 1:00 PM"
+              style={{ width: "100%", padding: "0.5rem 0.7rem", borderRadius: "6px", border: `1px solid ${amber}`, backgroundColor: hasConvertedDateRef.current ? (darkMode ? "#1c1000" : "#fffbeb") : inputBg, color: textColor, boxSizing: "border-box", fontFamily: hasConvertedDateRef.current ? "monospace" : "inherit", fontSize: "0.88rem", transition: "background-color 0.2s ease" }}
+            />
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
+              <button type="button" onClick={handleConvertNow} style={amberBtn}>⇄ Convert</button>
+              <button type="button" onClick={handleUseCurrentDateTime} style={amberBtn}>🕐 Now</button>
+              {dateInput.trim().length > 0 && (
+                <button type="button" onClick={handleClearDate}
+                  style={{ padding: "0.25rem 0.6rem", borderRadius: "999px", border: "1px solid #fca5a5", backgroundColor: darkMode ? "#1c0a0a" : "#fff5f5", color: darkMode ? "#fca5a5" : "#dc2626", fontSize: "0.72rem", cursor: "pointer", fontWeight: 500 }}>
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Hint */}
+            <p style={{ margin: 0, fontSize: "0.68rem", color: mutedText, fontStyle: "italic", lineHeight: 1.4 }}>
+              After-hours → next business day 8:00AM (Fri after 5PM → Monday). Auto-copies on match.
+            </p>
+          </div>
+        )}
       </div>
     </section>
   );
